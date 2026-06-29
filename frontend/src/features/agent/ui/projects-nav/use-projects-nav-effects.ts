@@ -29,7 +29,9 @@ type PinnedActiveSession = ActiveAgentSession & {
 
 const getProjectsNavSnapshot = (): number => 0;
 
-let cachedSessionPrefs: SessionPrefs = {};
+const emptySessionPrefs: SessionPrefs = {};
+
+let cachedSessionPrefs: SessionPrefs = emptySessionPrefs;
 let cachedSessionPrefsKey = "";
 
 function syncSessionPrefsSnapshot(): boolean {
@@ -65,7 +67,11 @@ export function useProjectsNavSessionPrefs(): SessionPrefs {
     };
   }, []);
 
-  return useSyncExternalStore(subscribeSessionPrefs, getSessionPrefsSnapshot, () => ({}));
+  return useSyncExternalStore(
+    subscribeSessionPrefs,
+    getSessionPrefsSnapshot,
+    () => emptySessionPrefs,
+  );
 }
 
 export function useProjectDirectoryPickerModalEffects({
