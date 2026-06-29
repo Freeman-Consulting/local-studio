@@ -1,3 +1,5 @@
+import type { FleetController, FleetControllerInput } from "@/lib/types";
+
 const CONTROLLERS_STORAGE_KEY = "local-studio.controllers";
 const LEGACY_CONTROLLERS_STORAGE_KEY = [["v", "llm-studio"].join(""), "controllers"].join(".");
 export const CONTROLLERS_CHANGED_EVENT = "vllm:controllers-changed";
@@ -96,5 +98,44 @@ export function getControllerApiKey(url: string): string {
     loadSavedControllers().find(
       (controller) => normalizeControllerUrl(controller.url) === normalized,
     )?.apiKey ?? ""
+  );
+}
+
+export function savedControllersToFleetInputs(
+  controllers: SavedController[],
+): FleetControllerInput[] {
+  return controllers.flatMap((controller) => {
+    const url = normalizeControllerUrl(controller.url);
+    if (!url) return [];
+    const input: FleetControllerInput = { url };
+    const apiKey = controller.apiKey?.trim();
+    const name = controller.name?.trim();
+    if (apiKey) input.apiKey = apiKey;
+    if (name) input.name = name;
+    return [input];
+  });
+}
+
+export function fleetControllersToSavedControllers(
+  controllers: FleetController[],
+  existing: SavedController[] = loadSavedControllers(),
+): SavedController[] {
+  const localKeys = new Map(
+    existing.map((controller) => [
+      normalizeControllerUrl(controller.url),
+      controller.apiKey?.trim() ?? "",
+    ]),
+  );
+  return saveSavedControllers(
+    controllers
+      .filter((controller) => controller.enabled)
+      .map((controller) => {
+        const out: SavedController = { url: normalizeControllerUrl(controller.url) };
+        const name = controller.name.trim();
+        const apiKey = localKeys.get(out.url);
+        if (name) out.name = name;
+        if (apiKey) out.apiKey = apiKey;
+        return out;
+      }),
   );
 }

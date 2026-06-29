@@ -4,6 +4,7 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import type { DashboardLayoutProps } from "../layout/dashboard-types";
 import { StatusSection } from "./status-section";
 import { GpuSection } from "./gpu-section";
+import api from "@/lib/api/client";
 import { createApiClient } from "@/lib/api/create-api-client";
 import {
   BACKEND_URL_CHANGED_EVENT,
@@ -13,8 +14,10 @@ import {
 } from "@/lib/api/connection";
 import {
   CONTROLLERS_CHANGED_EVENT,
+  fleetControllersToSavedControllers,
   loadSavedControllers,
   normalizeControllerUrl,
+  savedControllersToFleetInputs,
   type SavedController,
 } from "@/lib/api/controllers";
 import type { GPU, ProcessInfo } from "@/lib/types";
@@ -70,34 +73,52 @@ function ControllerMatrix() {
   const [snapshots, setSnapshots] = useState<ControllerSnapshot[]>([]);
 
   const subscribeControllers = useCallback((_notify: () => void) => {
-    const load = () => {
+    let cancelled = false;
+    const localControllers = (): SavedController[] => {
       const saved = loadSavedControllers();
       const byUrl = new Map<string, SavedController>();
       const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
       for (const controller of saved) {
         const url = normalizeControllerUrl(controller.url);
-        if (!url) continue;
-        byUrl.set(url, { ...controller, url });
+        if (url) byUrl.set(url, { ...controller, url });
       }
       if (activeUrl && !byUrl.has(activeUrl)) byUrl.set(activeUrl, { url: activeUrl });
       if (byUrl.size === 0) {
         const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
         if (primary) byUrl.set(primary, { url: primary });
       }
-      const next = [...byUrl.values()];
+      return [...byUrl.values()];
+    };
+    const applyControllers = (next: SavedController[]) => {
+      const urls = new Set(next.map((controller) => normalizeControllerUrl(controller.url)));
       setSnapshots((current) =>
-        current.filter((snapshot) => byUrl.has(normalizeControllerUrl(snapshot.url))),
+        current.filter((snapshot) => urls.has(normalizeControllerUrl(snapshot.url))),
       );
       setControllers(next);
     };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener(BACKEND_URL_CHANGED_EVENT, load);
-    window.addEventListener(CONTROLLERS_CHANGED_EVENT, load);
+    const load = async () => {
+      const local = localControllers();
+      applyControllers(local);
+      try {
+        const inputs = savedControllersToFleetInputs(local);
+        if (inputs.length > 0) await api.importFleetControllers(inputs);
+        const fleet = await api.getFleetControllers();
+        if (!cancelled && fleet.length > 0)
+          applyControllers(fleetControllersToSavedControllers(fleet, local));
+      } catch {
+        if (!cancelled) applyControllers(local);
+      }
+    };
+    const refresh = () => void load();
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener(BACKEND_URL_CHANGED_EVENT, refresh);
+    window.addEventListener(CONTROLLERS_CHANGED_EVENT, refresh);
     return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, load);
-      window.removeEventListener(CONTROLLERS_CHANGED_EVENT, load);
+      cancelled = true;
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(BACKEND_URL_CHANGED_EVENT, refresh);
+      window.removeEventListener(CONTROLLERS_CHANGED_EVENT, refresh);
     };
   }, []);
 

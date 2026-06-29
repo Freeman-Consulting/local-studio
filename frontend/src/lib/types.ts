@@ -62,6 +62,18 @@ export type {
   VRAMCalculation,
 } from "../../../shared/contracts/observability";
 
+export type {
+  FleetController,
+  FleetControllerImportResult,
+  FleetControllerInput,
+  FleetControllerRole,
+  FleetControllerStatus,
+  FleetControllerStatusResult,
+  FleetControllerUpdateInput,
+  FleetModelEntry,
+  FleetStatusResponse,
+} from "../../../shared/contracts/fleet";
+
 // --- Recipes ---
 
 /**
