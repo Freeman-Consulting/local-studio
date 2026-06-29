@@ -1,7 +1,13 @@
 import { badRequest, notFound } from "../../core/errors";
 import { parseJsonObjectBody } from "../../core/validation";
 import type { RouteRegistrar } from "../../http/route-registrar";
-import type { FleetControllerInput, FleetControllerRole, FleetControllerUpdateInput } from "../../../../shared/contracts/fleet";
+import type {
+  FleetControllerInput,
+  FleetControllerRole,
+  FleetControllerUpdateInput,
+  FleetRouteInput,
+  FleetRouteUpdateInput,
+} from "../../../../shared/contracts/fleet";
 
 const ROLES = new Set<FleetControllerRole>(["control-plane", "inference", "specialist", "operator-client"]);
 
@@ -51,6 +57,62 @@ const controllerUpdate = (record: Record<string, unknown>): FleetControllerUpdat
   assignDefined(input, "name", optionalText(record, "name"));
   assignDefined(input, "role", optionalRole(record));
   assignDefined(input, "enabled", optionalEnabled(record));
+  assignDefined(input, "notes", optionalText(record, "notes"));
+  return input;
+};
+
+const optionalStringArray = (record: Record<string, unknown>, key: string): string[] | undefined => {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw badRequest(`${key} must be an array`);
+  return value.map((entry) => {
+    if (typeof entry !== "string") throw badRequest(`${key} entries must be strings`);
+    return entry.trim();
+  }).filter(Boolean);
+};
+
+const optionalRecord = (record: Record<string, unknown>, key: string): Record<string, unknown> | undefined => {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest(`${key} must be an object`);
+  return value as Record<string, unknown>;
+};
+
+const optionalNullableText = (record: Record<string, unknown>, key: string): string | null | undefined => {
+  const value = record[key];
+  if (value === null) return null;
+  return optionalText(record, key);
+};
+
+const routeInput = (record: Record<string, unknown>): FleetRouteInput => {
+  const name = optionalText(record, "name");
+  const controllerId = optionalText(record, "controllerId");
+  const modelId = optionalText(record, "modelId");
+  if (!name) throw badRequest("fleet route name is required");
+  if (!controllerId) throw badRequest("fleet route controllerId is required");
+  if (!modelId) throw badRequest("fleet route modelId is required");
+  const input: FleetRouteInput = { name, controllerId, modelId };
+  assignDefined(input, "enabled", optionalEnabled(record));
+  assignDefined(input, "fallbackRouteId", optionalNullableText(record, "fallbackRouteId"));
+  assignDefined(input, "tags", optionalStringArray(record, "tags"));
+  assignDefined(input, "trustLevel", optionalText(record, "trustLevel"));
+  assignDefined(input, "disruptionCost", optionalText(record, "disruptionCost"));
+  assignDefined(input, "defaultParams", optionalRecord(record, "defaultParams"));
+  assignDefined(input, "notes", optionalText(record, "notes"));
+  return input;
+};
+
+const routeUpdate = (record: Record<string, unknown>): FleetRouteUpdateInput => {
+  const input: FleetRouteUpdateInput = {};
+  assignDefined(input, "name", optionalText(record, "name"));
+  assignDefined(input, "controllerId", optionalText(record, "controllerId"));
+  assignDefined(input, "modelId", optionalText(record, "modelId"));
+  assignDefined(input, "enabled", optionalEnabled(record));
+  assignDefined(input, "fallbackRouteId", optionalNullableText(record, "fallbackRouteId"));
+  assignDefined(input, "tags", optionalStringArray(record, "tags"));
+  assignDefined(input, "trustLevel", optionalText(record, "trustLevel"));
+  assignDefined(input, "disruptionCost", optionalText(record, "disruptionCost"));
+  assignDefined(input, "defaultParams", optionalRecord(record, "defaultParams"));
   assignDefined(input, "notes", optionalText(record, "notes"));
   return input;
 };
@@ -125,6 +187,40 @@ export const registerFleetRoutes: RouteRegistrar = (app, context) => {
     } catch (error) {
       return mapBadRequest(error);
     }
+  });
+
+  app.get("/fleet/routes", (ctx) => ctx.json(store.listRoutes()));
+
+  app.get("/fleet/routes/:id", (ctx) => {
+    const route = store.getRoute(ctx.req.param("id")) ?? store.getRouteByName(ctx.req.param("id"));
+    if (!route) throw notFound("fleet route not found");
+    return ctx.json(route);
+  });
+
+  app.post("/fleet/routes", async (ctx) => {
+    try {
+      const input = routeInput(await parseJsonObjectBody(ctx));
+      if (store.getRouteByName(input.name)) throw badRequest("fleet route already registered with this name");
+      return ctx.json(store.createRoute(input), { status: 201 });
+    } catch (error) {
+      return mapBadRequest(error);
+    }
+  });
+
+  app.patch("/fleet/routes/:id", async (ctx) => {
+    let route;
+    try {
+      route = store.updateRoute(ctx.req.param("id"), routeUpdate(await parseJsonObjectBody(ctx)));
+    } catch (error) {
+      return mapBadRequest(error);
+    }
+    if (!route) throw notFound("fleet route not found");
+    return ctx.json(route);
+  });
+
+  app.delete("/fleet/routes/:id", (ctx) => {
+    if (!store.deleteRoute(ctx.req.param("id"))) throw notFound("fleet route not found");
+    return ctx.json({ success: true });
   });
 
   app.get("/fleet/status", async (ctx) => {

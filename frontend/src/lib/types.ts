@@ -71,6 +71,9 @@ export type {
   FleetControllerStatusResult,
   FleetControllerUpdateInput,
   FleetModelEntry,
+  FleetRoute,
+  FleetRouteInput,
+  FleetRouteUpdateInput,
   FleetStatusResponse,
 } from "../../../shared/contracts/fleet";
 

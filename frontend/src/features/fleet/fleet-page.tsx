@@ -8,6 +8,8 @@ import type {
   FleetControllerRole,
   FleetControllerStatusResult,
   FleetModelEntry,
+  FleetRoute,
+  FleetRouteInput,
 } from "@/lib/types";
 import { AppPage, Button, Card, Input, PageHeader, StatusDot, StatusPill } from "@/ui";
 import { Network, RefreshCw, Trash2 } from "@/ui/icon-registry";
@@ -21,6 +23,7 @@ const roleOptions: FleetControllerRole[] = [
 
 type FleetState = {
   controllers: FleetController[];
+  routes: FleetRoute[];
   statuses: FleetControllerStatusResult[];
   models: FleetModelEntry[];
   checkedAt: string | null;
@@ -28,6 +31,7 @@ type FleetState = {
 
 const emptyFleetState = (): FleetState => ({
   controllers: [],
+  routes: [],
   statuses: [],
   models: [],
   checkedAt: null,
@@ -56,12 +60,24 @@ export default function FleetPage() {
   const [state, setState] = useState<FleetState>(emptyFleetState);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingRoute, setSavingRoute] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FleetControllerInput>({
     url: "",
     name: "",
     role: "inference",
     apiKey: "",
+    notes: "",
+  });
+  const [routeForm, setRouteForm] = useState<FleetRouteInput>({
+    name: "",
+    controllerId: "",
+    modelId: "",
+    enabled: true,
+    tags: [],
+    trustLevel: "",
+    disruptionCost: "",
+    defaultParams: {},
     notes: "",
   });
 
@@ -74,12 +90,14 @@ export default function FleetPage() {
     setLoading(true);
     setError(null);
     try {
-      const [controllers, status] = await Promise.all([
+      const [controllers, routes, status] = await Promise.all([
         api.getFleetControllers(),
+        api.getFleetRoutes(),
         api.getFleetStatus(1500),
       ]);
       setState({
         controllers,
+        routes,
         statuses: status.controllers,
         models: status.models,
         checkedAt: status.checkedAt,
@@ -128,6 +146,50 @@ export default function FleetPage() {
     setError(null);
     try {
       await api.deleteFleetController(controller.id);
+      await loadFleet();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    }
+  };
+
+  const saveRoute = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingRoute(true);
+    setError(null);
+    try {
+      await api.createFleetRoute({
+        ...routeForm,
+        name: routeForm.name,
+        controllerId: routeForm.controllerId,
+        modelId: routeForm.modelId,
+        tags: routeForm.tags,
+        trustLevel: routeForm.trustLevel || undefined,
+        disruptionCost: routeForm.disruptionCost || undefined,
+        notes: routeForm.notes || undefined,
+      });
+      setRouteForm({
+        name: "",
+        controllerId: "",
+        modelId: "",
+        enabled: true,
+        tags: [],
+        trustLevel: "",
+        disruptionCost: "",
+        defaultParams: {},
+        notes: "",
+      });
+      await loadFleet();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setSavingRoute(false);
+    }
+  };
+
+  const deleteRoute = async (route: FleetRoute) => {
+    setError(null);
+    try {
+      await api.deleteFleetRoute(route.id);
       await loadFleet();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
@@ -251,6 +313,72 @@ export default function FleetPage() {
           <Card padding="sm" className="overflow-hidden">
             <div className="border-b border-(--border)/60 px-4 py-3">
               <div className="text-[length:var(--fs-lg)] font-semibold text-(--fg)">
+                Route aliases
+              </div>
+              <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
+                Operator-facing names for controller/model lanes.
+              </p>
+            </div>
+            <div className="divide-y divide-(--border)/45">
+              {state.routes.length === 0 ? (
+                <div className="px-4 py-6 text-[length:var(--fs-sm)] text-(--dim)">
+                  No route aliases yet. Add one after registering a controller.
+                </div>
+              ) : (
+                state.routes.map((route) => (
+                  <div key={route.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_auto]">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[length:var(--fs-lg)] font-semibold text-(--fg)">
+                          {route.name}
+                        </span>
+                        <StatusPill tone={route.enabled ? "good" : "default"} variant="badge">
+                          {route.enabled ? "enabled" : "disabled"}
+                        </StatusPill>
+                        {route.trustLevel ? (
+                          <StatusPill tone="info" variant="badge">
+                            {route.trustLevel}
+                          </StatusPill>
+                        ) : null}
+                        {route.disruptionCost ? (
+                          <StatusPill tone="warning" variant="badge">
+                            {route.disruptionCost}
+                          </StatusPill>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 truncate text-[length:var(--fs-sm)] text-(--dim)">
+                        {route.controllerName || route.controllerUrl} · {route.modelId}
+                      </div>
+                      {route.tags.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {route.tags.map((tag) => (
+                            <StatusPill key={tag} tone="default" variant="badge">
+                              {tag}
+                            </StatusPill>
+                          ))}
+                        </div>
+                      ) : null}
+                      {route.notes ? (
+                        <div className="mt-2 text-[length:var(--fs-sm)] text-(--dim)">
+                          {route.notes}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex items-start justify-end gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => void deleteRoute(route)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
+          <Card padding="sm" className="overflow-hidden">
+            <div className="border-b border-(--border)/60 px-4 py-3">
+              <div className="text-[length:var(--fs-lg)] font-semibold text-(--fg)">
                 Models by controller
               </div>
               <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
@@ -278,67 +406,146 @@ export default function FleetPage() {
           </Card>
         </div>
 
-        <Card className="h-fit">
-          <div className="mb-3 text-[length:var(--fs-lg)] font-semibold text-(--fg)">
-            Add controller
-          </div>
-          <form onSubmit={saveController} className="space-y-3">
-            <Input
-              value={form.url}
-              onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))}
-              placeholder="http://main-llm:8080"
-              required
-            />
-            <Input
-              value={form.name ?? ""}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="main-llm"
-            />
-            <select
-              value={form.role ?? "inference"}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  role: event.target.value as FleetControllerRole,
-                }))
-              }
-              className="h-9 w-full rounded-md border border-(--border) bg-(--surface) px-3 text-[length:var(--fs-sm)] text-(--fg)"
-            >
-              {roleOptions.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-            <Input
-              value={form.apiKey ?? ""}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, apiKey: event.target.value }))
-              }
-              placeholder="optional controller API key"
-              type="password"
-            />
-            <Input
-              value={form.notes ?? ""}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, notes: event.target.value }))
-              }
-              placeholder="notes"
-            />
-            <Button type="submit" className="w-full" disabled={saving}>
-              {saving ? "Adding…" : "Add to shared registry"}
-            </Button>
-          </form>
-          <div className="mt-4 rounded-md border border-(--border)/60 bg-(--surface-muted)/30 p-3 text-[length:var(--fs-sm)] text-(--dim)">
-            The controller API still lives on port 8081 here. The user-facing surface is this
-            frontend on port 3000.
-          </div>
-          {state.checkedAt ? (
-            <div className="mt-3 text-[length:var(--fs-xs)] text-(--dim)">
-              Last checked {state.checkedAt}
+        <div className="space-y-4">
+          <Card className="h-fit">
+            <div className="mb-3 text-[length:var(--fs-lg)] font-semibold text-(--fg)">
+              Add controller
             </div>
-          ) : null}
-        </Card>
+            <form onSubmit={saveController} className="space-y-3">
+              <Input
+                value={form.url}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, url: event.target.value }))
+                }
+                placeholder="http://main-llm:8080"
+                required
+              />
+              <Input
+                value={form.name ?? ""}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="main-llm"
+              />
+              <select
+                value={form.role ?? "inference"}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    role: event.target.value as FleetControllerRole,
+                  }))
+                }
+                className="h-9 w-full rounded-md border border-(--border) bg-(--surface) px-3 text-[length:var(--fs-sm)] text-(--fg)"
+              >
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+              <Input
+                value={form.apiKey ?? ""}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, apiKey: event.target.value }))
+                }
+                placeholder="optional controller API key"
+                type="password"
+              />
+              <Input
+                value={form.notes ?? ""}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, notes: event.target.value }))
+                }
+                placeholder="notes"
+              />
+              <Button type="submit" className="w-full" disabled={saving}>
+                {saving ? "Adding…" : "Add to shared registry"}
+              </Button>
+            </form>
+            <div className="mt-4 rounded-md border border-(--border)/60 bg-(--surface-muted)/30 p-3 text-[length:var(--fs-sm)] text-(--dim)">
+              The controller API still lives on port 8081 here. The user-facing surface is this
+              frontend on port 3000.
+            </div>
+            {state.checkedAt ? (
+              <div className="mt-3 text-[length:var(--fs-xs)] text-(--dim)">
+                Last checked {state.checkedAt}
+              </div>
+            ) : null}
+          </Card>
+
+          <Card className="h-fit">
+            <div className="mb-3 text-[length:var(--fs-lg)] font-semibold text-(--fg)">
+              Add route alias
+            </div>
+            <form onSubmit={saveRoute} className="space-y-3">
+              <Input
+                value={routeForm.name}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="main-qwen27"
+                required
+              />
+              <select
+                value={routeForm.controllerId}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, controllerId: event.target.value }))
+                }
+                className="h-9 w-full rounded-md border border-(--border) bg-(--surface) px-3 text-[length:var(--fs-sm)] text-(--fg)"
+                required
+              >
+                <option value="">Select controller</option>
+                {state.controllers.map((controller) => (
+                  <option key={controller.id} value={controller.id}>
+                    {controller.name || controller.url}
+                  </option>
+                ))}
+              </select>
+              <Input
+                value={routeForm.modelId}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, modelId: event.target.value }))
+                }
+                placeholder="qwen27"
+                required
+              />
+              <Input
+                value={(routeForm.tags ?? []).join(", ")}
+                onChange={(event) =>
+                  setRouteForm((current) => ({
+                    ...current,
+                    tags: event.target.value
+                      .split(",")
+                      .map((tag) => tag.trim())
+                      .filter(Boolean),
+                  }))
+                }
+                placeholder="daily, trusted"
+              />
+              <Input
+                value={routeForm.trustLevel ?? ""}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, trustLevel: event.target.value }))
+                }
+                placeholder="trust level"
+              />
+              <Input
+                value={routeForm.disruptionCost ?? ""}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, disruptionCost: event.target.value }))
+                }
+                placeholder="disruption cost"
+              />
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={savingRoute || state.controllers.length === 0}
+              >
+                {savingRoute ? "Adding…" : "Add route alias"}
+              </Button>
+            </form>
+          </Card>
+        </div>
       </div>
     </AppPage>
   );

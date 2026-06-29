@@ -7,6 +7,9 @@ import type {
   FleetControllerStatusResult,
   FleetControllerUpdateInput,
   FleetModelEntry,
+  FleetRoute,
+  FleetRouteInput,
+  FleetRouteUpdateInput,
 } from "../../../shared/contracts/fleet";
 import { openSqliteDatabase } from "./sqlite";
 
@@ -29,6 +32,24 @@ type FleetModelRow = {
   model_id: string;
   backend: string | null;
   checked_at: string;
+};
+
+type FleetRouteRow = {
+  id: string;
+  name: string;
+  controller_id: string;
+  controller_name: string;
+  controller_url: string;
+  model_id: string;
+  enabled: number;
+  fallback_route_id: string | null;
+  tags_json: string;
+  trust_level: string;
+  disruption_cost: string;
+  default_params_json: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type FleetProbeTarget = FleetController & { apiKey: string | null };
@@ -97,6 +118,42 @@ const mapModel = (row: FleetModelRow): FleetModelEntry => ({
   checkedAt: row.checked_at,
 });
 
+const parseStringArray = (value: string): string[] => {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseRecord = (value: string): Record<string, unknown> => {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+};
+
+const mapRoute = (row: FleetRouteRow): FleetRoute => ({
+  id: row.id,
+  name: row.name,
+  controllerId: row.controller_id,
+  controllerName: row.controller_name,
+  controllerUrl: row.controller_url,
+  modelId: row.model_id,
+  enabled: Boolean(row.enabled),
+  fallbackRouteId: row.fallback_route_id,
+  tags: parseStringArray(row.tags_json),
+  trustLevel: row.trust_level,
+  disruptionCost: row.disruption_cost,
+  defaultParams: parseRecord(row.default_params_json),
+  notes: row.notes ?? "",
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const withTimeout = async (url: string, apiKey: string | null, timeoutMs: number): Promise<Response> => {
@@ -161,6 +218,12 @@ export interface FleetStore {
   importControllers(inputs: FleetControllerInput[]): { controllers: FleetController[]; imported: string[]; skipped: string[] };
   listModels(): FleetModelEntry[];
   upsertModels(models: FleetModelEntry[]): void;
+  listRoutes(): FleetRoute[];
+  getRoute(id: string): FleetRoute | null;
+  getRouteByName(name: string): FleetRoute | null;
+  createRoute(input: FleetRouteInput): FleetRoute;
+  updateRoute(id: string, input: FleetRouteUpdateInput): FleetRoute | null;
+  deleteRoute(id: string): boolean;
   probeControllers(timeoutMs: number): Promise<FleetControllerStatusResult[]>;
   probeFleetModels(timeoutMs?: number): Promise<FleetModelEntry[]>;
 }
@@ -199,6 +262,26 @@ export class SqliteFleetStore implements FleetStore {
       )
     `);
     this.db.run("CREATE INDEX IF NOT EXISTS idx_fleet_models_controller_id ON fleet_models(controller_id)");
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS fleet_routes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        controller_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        fallback_route_id TEXT,
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        trust_level TEXT NOT NULL DEFAULT '',
+        disruption_cost TEXT NOT NULL DEFAULT '',
+        default_params_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (controller_id) REFERENCES fleet_controllers(id) ON DELETE CASCADE,
+        FOREIGN KEY (fallback_route_id) REFERENCES fleet_routes(id) ON DELETE SET NULL
+      )
+    `);
+    this.db.run("CREATE INDEX IF NOT EXISTS idx_fleet_routes_controller_id ON fleet_routes(controller_id)");
   }
 
   public list(): FleetController[] {
@@ -299,6 +382,89 @@ export class SqliteFleetStore implements FleetStore {
     tx(models);
   }
 
+  public listRoutes(): FleetRoute[] {
+    return this.routeQuery("ORDER BY r.created_at ASC, r.name ASC").map(mapRoute);
+  }
+
+  public getRoute(id: string): FleetRoute | null {
+    const row = this.routeQuery("WHERE r.id = ?", id)[0];
+    return row ? mapRoute(row) : null;
+  }
+
+  public getRouteByName(name: string): FleetRoute | null {
+    const row = this.routeQuery("WHERE r.name = ?", this.normalizeRouteName(name))[0];
+    return row ? mapRoute(row) : null;
+  }
+
+  public createRoute(input: FleetRouteInput): FleetRoute {
+    const route = this.prepareRoute(input);
+    this.db.query(`
+      INSERT INTO fleet_routes (
+        id, name, controller_id, model_id, enabled, fallback_route_id, tags_json,
+        trust_level, disruption_cost, default_params_json, notes, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      route.id,
+      route.name,
+      route.controllerId,
+      route.modelId,
+      route.enabled ? 1 : 0,
+      route.fallbackRouteId,
+      JSON.stringify(route.tags),
+      route.trustLevel,
+      route.disruptionCost,
+      JSON.stringify(route.defaultParams),
+      route.notes,
+      route.createdAt,
+      route.updatedAt,
+    );
+    return this.getRoute(route.id)!;
+  }
+
+  public updateRoute(id: string, input: FleetRouteUpdateInput): FleetRoute | null {
+    const existing = this.db.query<FleetRouteRow, [string]>("SELECT * FROM fleet_routes WHERE id = ?").get(id);
+    if (!existing) return null;
+    const route = this.prepareRoute({
+      name: input.name ?? existing.name,
+      controllerId: input.controllerId ?? existing.controller_id,
+      modelId: input.modelId ?? existing.model_id,
+      enabled: input.enabled ?? Boolean(existing.enabled),
+      fallbackRouteId: input.fallbackRouteId === undefined ? existing.fallback_route_id : input.fallbackRouteId,
+      tags: input.tags ?? parseStringArray(existing.tags_json),
+      trustLevel: input.trustLevel ?? existing.trust_level,
+      disruptionCost: input.disruptionCost ?? existing.disruption_cost,
+      defaultParams: input.defaultParams ?? parseRecord(existing.default_params_json),
+      notes: input.notes ?? existing.notes ?? "",
+    }, id, existing.created_at);
+    this.db.query(`
+      UPDATE fleet_routes
+      SET name = ?, controller_id = ?, model_id = ?, enabled = ?, fallback_route_id = ?,
+          tags_json = ?, trust_level = ?, disruption_cost = ?, default_params_json = ?, notes = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      route.name,
+      route.controllerId,
+      route.modelId,
+      route.enabled ? 1 : 0,
+      route.fallbackRouteId,
+      JSON.stringify(route.tags),
+      route.trustLevel,
+      route.disruptionCost,
+      JSON.stringify(route.defaultParams),
+      route.notes,
+      route.updatedAt,
+      id,
+    );
+    return this.getRoute(id);
+  }
+
+  public deleteRoute(id: string): boolean {
+    this.db.query("UPDATE fleet_routes SET fallback_route_id = NULL WHERE fallback_route_id = ?").run(id);
+    const result = this.db.query("DELETE FROM fleet_routes WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
   public async probeControllers(timeoutMs: number): Promise<FleetControllerStatusResult[]> {
     return runBounded(this.listProbeTargets(), (controller) => this.probeController(controller, timeoutMs));
   }
@@ -323,6 +489,75 @@ export class SqliteFleetStore implements FleetStore {
 
   private listProbeTargets(): FleetProbeTarget[] {
     return this.listRows().map(mapProbeTarget);
+  }
+
+  private routeQuery(clause: string, ...params: string[]): FleetRouteRow[] {
+    return this.db.query<FleetRouteRow, string[]>(`
+      SELECT
+        r.id,
+        r.name,
+        r.controller_id,
+        c.name AS controller_name,
+        c.url AS controller_url,
+        r.model_id,
+        r.enabled,
+        r.fallback_route_id,
+        r.tags_json,
+        r.trust_level,
+        r.disruption_cost,
+        r.default_params_json,
+        r.notes,
+        r.created_at,
+        r.updated_at
+      FROM fleet_routes r
+      JOIN fleet_controllers c ON c.id = r.controller_id
+      ${clause}
+    `).all(...params);
+  }
+
+  private normalizeRouteName(name: string): string {
+    const normalized = trimString(name).toLowerCase();
+    if (!normalized) throw new Error("fleet route name is required");
+    if (!/^[a-z0-9][a-z0-9._-]{1,62}$/.test(normalized)) {
+      throw new Error("fleet route name must be 2-63 lowercase letters, numbers, dots, underscores, or dashes");
+    }
+    return normalized;
+  }
+
+  private normalizeRouteTags(tags: unknown): string[] {
+    if (!Array.isArray(tags)) return [];
+    return Array.from(new Set(tags.map(trimString).filter(Boolean))).sort();
+  }
+
+  private normalizeDefaultParams(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  }
+
+  private prepareRoute(input: FleetRouteInput, id: string = crypto.randomUUID(), createdAt = now()): FleetRoute {
+    const controller = this.get(input.controllerId);
+    if (!controller) throw new Error("fleet route controller not found");
+    const fallbackRouteId = trimString(input.fallbackRouteId ?? "") || null;
+    if (fallbackRouteId && !this.getRoute(fallbackRouteId)) throw new Error("fleet route fallback route not found");
+    const timestamp = now();
+    const modelId = trimString(input.modelId);
+    if (!modelId) throw new Error("fleet route model id is required");
+    return {
+      id,
+      name: this.normalizeRouteName(input.name),
+      controllerId: controller.id,
+      controllerName: controller.name,
+      controllerUrl: controller.url,
+      modelId,
+      enabled: input.enabled ?? true,
+      fallbackRouteId,
+      tags: this.normalizeRouteTags(input.tags),
+      trustLevel: trimString(input.trustLevel),
+      disruptionCost: trimString(input.disruptionCost),
+      defaultParams: this.normalizeDefaultParams(input.defaultParams),
+      notes: trimString(input.notes),
+      createdAt,
+      updatedAt: timestamp,
+    };
   }
 
   private prepareController(input: FleetControllerInput): FleetProbeTarget & { createdAt: string; updatedAt: string } {

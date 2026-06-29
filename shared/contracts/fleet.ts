@@ -64,3 +64,47 @@ export interface FleetStatusResponse {
   controllers: FleetControllerStatusResult[];
   models: FleetModelEntry[];
 }
+
+export interface FleetRouteInput {
+  name: string;
+  controllerId: string;
+  modelId: string;
+  enabled?: boolean;
+  fallbackRouteId?: string | null;
+  tags?: string[];
+  trustLevel?: string;
+  disruptionCost?: string;
+  defaultParams?: Record<string, unknown>;
+  notes?: string;
+}
+
+export interface FleetRouteUpdateInput {
+  name?: string;
+  controllerId?: string;
+  modelId?: string;
+  enabled?: boolean;
+  fallbackRouteId?: string | null;
+  tags?: string[];
+  trustLevel?: string;
+  disruptionCost?: string;
+  defaultParams?: Record<string, unknown>;
+  notes?: string;
+}
+
+export interface FleetRoute {
+  id: string;
+  name: string;
+  controllerId: string;
+  controllerName: string;
+  controllerUrl: string;
+  modelId: string;
+  enabled: boolean;
+  fallbackRouteId: string | null;
+  tags: string[];
+  trustLevel: string;
+  disruptionCost: string;
+  defaultParams: Record<string, unknown>;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}

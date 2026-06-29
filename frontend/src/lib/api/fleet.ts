@@ -5,6 +5,9 @@ import type {
   FleetControllerInput,
   FleetControllerUpdateInput,
   FleetModelEntry,
+  FleetRoute,
+  FleetRouteInput,
+  FleetRouteUpdateInput,
   FleetStatusResponse,
 } from "@/lib/types";
 
@@ -23,6 +26,11 @@ type FleetApi = {
   getFleetStatus: (timeoutMs?: number) => Promise<FleetStatusResponse>;
   refreshFleetStatus: () => Promise<FleetStatusResponse>;
   getFleetModels: () => Promise<FleetModelEntry[]>;
+  getFleetRoutes: () => Promise<FleetRoute[]>;
+  getFleetRouteById: (id: string) => Promise<FleetRoute>;
+  createFleetRoute: (input: FleetRouteInput) => Promise<FleetRoute>;
+  updateFleetRoute: (id: string, input: FleetRouteUpdateInput) => Promise<FleetRoute>;
+  deleteFleetRoute: (id: string) => Promise<{ success: true }>;
 };
 
 const encodePathSegment = (segment: string): string =>
@@ -59,4 +67,20 @@ export const createFleetApi = (core: ApiCore): FleetApi => ({
   refreshFleetStatus: () =>
     core.request<FleetStatusResponse>("/fleet/status/refresh", { method: "POST" }),
   getFleetModels: () => core.request<FleetModelEntry[]>("/fleet/models"),
+  getFleetRoutes: () => core.request<FleetRoute[]>("/fleet/routes"),
+  getFleetRouteById: (id) => core.request<FleetRoute>(`/fleet/routes/${encodePathSegment(id)}`),
+  createFleetRoute: (input) =>
+    core.request<FleetRoute>("/fleet/routes", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateFleetRoute: (id, input) =>
+    core.request<FleetRoute>(`/fleet/routes/${encodePathSegment(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deleteFleetRoute: (id) =>
+    core.request<{ success: true }>(`/fleet/routes/${encodePathSegment(id)}`, {
+      method: "DELETE",
+    }),
 });

@@ -144,4 +144,71 @@ describe("fleet controller contracts", () => {
     expect(unauthenticated.status).toBe(401);
     expect(authenticated.status).toBe(201);
   });
+
+  test("route aliases CRUD map names to controllers and models", async () => {
+    const app = await createTestApp();
+    const controllerResponse = await app.request("/fleet/controllers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "http://127.0.0.1:19004", name: "Main LLM" }),
+    });
+    const controller = await controllerResponse.json();
+
+    const createResponse = await app.request("/fleet/routes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "MAIN-QWEN27",
+        controllerId: controller.id,
+        modelId: "qwen27",
+        tags: ["daily", "fast", "daily"],
+        trustLevel: "trusted",
+        disruptionCost: "low",
+        defaultParams: { temperature: 0.2 },
+        notes: "stable 3090 lane",
+      }),
+    });
+    const route = await createResponse.json();
+
+    expect(createResponse.status).toBe(201);
+    expect(route.name).toBe("main-qwen27");
+    expect(route.controllerId).toBe(controller.id);
+    expect(route.controllerName).toBe("Main LLM");
+    expect(route.controllerUrl).toBe("http://127.0.0.1:19004");
+    expect(route.modelId).toBe("qwen27");
+    expect(route.tags).toEqual(["daily", "fast"]);
+    expect(route.defaultParams).toEqual({ temperature: 0.2 });
+
+    const duplicateResponse = await app.request("/fleet/routes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "main-qwen27", controllerId: controller.id, modelId: "other" }),
+    });
+    expect(duplicateResponse.status).toBe(400);
+
+    const byNameResponse = await app.request("/fleet/routes/main-qwen27");
+    const byName = await byNameResponse.json();
+    expect(byNameResponse.status).toBe(200);
+    expect(byName.id).toBe(route.id);
+
+    const updateResponse = await app.request(`/fleet/routes/${route.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false, fallbackRouteId: null, tags: ["paused"] }),
+    });
+    const updated = await updateResponse.json();
+    expect(updateResponse.status).toBe(200);
+    expect(updated.enabled).toBe(false);
+    expect(updated.tags).toEqual(["paused"]);
+
+    const listResponse = await app.request("/fleet/routes");
+    const routes = await listResponse.json();
+    expect(listResponse.status).toBe(200);
+    expect(routes).toHaveLength(1);
+    expect(routes[0].name).toBe("main-qwen27");
+
+    const deleteResponse = await app.request(`/fleet/routes/${route.id}`, { method: "DELETE" });
+    expect(deleteResponse.status).toBe(200);
+    expect(await app.request(`/fleet/routes/${route.id}`)).toHaveProperty("status", 404);
+  });
 });
