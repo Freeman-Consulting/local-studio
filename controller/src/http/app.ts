@@ -10,6 +10,7 @@ import { registerModelsRoutes } from "../modules/models/routes";
 import { registerAllProxyRoutes } from "../modules/proxy/routes";
 import { registerStudioRoutes } from "../modules/studio/routes";
 import { registerAudioRoutes } from "../modules/audio/routes";
+import { registerFleetRoutes } from "../modules/fleet/routes";
 import { createOpenApiSpec } from "./openapi-spec";
 import {
   createMutatingAuthMiddleware,
@@ -76,6 +77,7 @@ export const createApp = (context: AppContext): Hono => {
   registerModelsRoutes(app, context);
   registerStudioRoutes(app, context);
   registerAudioRoutes(app, context);
+  registerFleetRoutes(app, context);
   registerAllProxyRoutes(app, context);
 
   app.get("/health", (ctx) => ctx.json({ status: "ok" }));

@@ -19,6 +19,7 @@ import { RecipeStore } from "./modules/models/recipes/recipe-store";
 import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
+import { createFleetStore, type FleetStore } from "./stores/fleet-store";
 
 export interface AppContext {
   config: Config;
@@ -39,6 +40,7 @@ export interface AppContext {
     inferenceRequestStore: InferenceRequestStore;
     controllerSettingsStore: ControllerSettingsStore;
     controllerRequestStore: ControllerRequestStore;
+    fleetStore: FleetStore;
   };
 }
 
@@ -72,6 +74,7 @@ export const createAppContext = (): AppContext => {
   const inferenceRequestStore = new InferenceRequestStore(dbPath);
   const controllerSettingsStore = new ControllerSettingsStore(dbPath);
   const controllerRequestStore = new ControllerRequestStore(dbPath);
+  const fleetStore = createFleetStore(dbPath);
   const eventManager = createEventManager();
   const logger = createLogger(resolveLogLevel("info"), {
     filePath: primaryLogPathFor(config.data_dir, "controller"),
@@ -103,7 +106,7 @@ export const createAppContext = (): AppContext => {
 
   lifetimeMetricsStore.ensureFirstStarted();
 
-  const baseContext = {
+  return {
     config,
     logger,
     eventManager,
@@ -122,8 +125,7 @@ export const createAppContext = (): AppContext => {
       inferenceRequestStore,
       controllerSettingsStore,
       controllerRequestStore,
+      fleetStore,
     },
-  } satisfies AppContext;
-
-  return baseContext;
+  };
 };

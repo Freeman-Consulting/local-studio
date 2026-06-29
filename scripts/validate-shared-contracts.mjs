@@ -52,6 +52,13 @@ const contractNames = [
   "UsageStats",
   "SortField",
   "SortDirection",
+  "FleetController",
+  "FleetControllerImportResult",
+  "FleetControllerRole",
+  "FleetControllerStatus",
+  "FleetControllerStatusResult",
+  "FleetStatusResponse",
+  "FleetModelEntry",
 ];
 const allowedFiles = new Set([
   "shared/contracts/recipes.ts",
@@ -59,6 +66,7 @@ const allowedFiles = new Set([
   "shared/contracts/controller-events.ts",
   "shared/contracts/observability.ts",
   "shared/contracts/usage.ts",
+  "shared/contracts/fleet.ts",
   "controller/src/modules/shared/recipe-types.ts",
   "controller/src/modules/shared/system-types.ts",
   "frontend/src/lib/types.ts",
