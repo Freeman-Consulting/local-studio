@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   Gauge,
+  Network,
   ChevronLeft,
   ChevronRight,
   Microchip,
@@ -49,6 +50,7 @@ type ActiveSessionDetail = {
 
 const tabs = [
   { href: "/", label: "Status", icon: Gauge },
+  { href: "/fleet", label: "Fleet", icon: Network },
   { href: "/usage", label: "Usage", icon: Microchip },
   { href: "/recipes", label: "Models", icon: HardDrive },
   { href: "/plugins", label: "Plugins", icon: Plug },
