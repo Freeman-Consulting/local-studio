@@ -134,7 +134,7 @@ function ControllerMatrix() {
         if (!cancelled) setSnapshots(next);
       };
       void poll();
-      const interval = window.setInterval(() => void poll(), 5_000);
+      const interval = window.setInterval(() => void poll(), 30_000);
       return () => {
         cancelled = true;
         window.clearInterval(interval);

@@ -7,7 +7,6 @@ import { getControllerApiKey, normalizeControllerUrl } from "./controllers";
 // --- Env-derived defaults ---
 
 const LOCAL_BACKEND_FALLBACK = "http://localhost:8080";
-const CLIENT_PROXY_FALLBACK = "/api/proxy";
 
 const pickFirstNonEmpty = (...values: Array<string | undefined>): string | undefined => {
   for (const value of values) {
@@ -38,16 +37,6 @@ export const resolveSettingsDefaultBackendUrl = (): string =>
     process.env.NEXT_PUBLIC_API_URL,
     process.env.NEXT_PUBLIC_BACKEND_URL,
   ) ?? LOCAL_BACKEND_FALLBACK;
-
-/**
- * Client-side controller event stream base URL.
- */
-export const resolveControllerEventsBaseUrl = (): string =>
-  pickFirstNonEmpty(
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-    process.env.LOCAL_STUDIO_BACKEND_URL,
-    process.env.BACKEND_URL,
-  ) ?? CLIENT_PROXY_FALLBACK;
 
 // --- Browser-stored backend URL ---
 

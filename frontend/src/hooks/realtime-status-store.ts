@@ -78,7 +78,7 @@ let pollBackoffUntil = 0;
 let activeControllerKey = currentControllerKey();
 let statusRequestSeq = 0;
 
-const POLL_BASE_INTERVAL_MS = 5_000;
+const POLL_BASE_INTERVAL_MS = 15_000;
 const POLL_MAX_BACKOFF_MS = 30_000;
 
 function notePollOutcome(connected: boolean) {
@@ -419,7 +419,7 @@ function start() {
   void fetchStatusNow();
   const pollProgram = Effect.sync(() => {
     const now = Date.now();
-    if (now - snapshot.lastEventAt < 10_000) return;
+    if (now - snapshot.lastEventAt < 30_000) return;
     if (now < pollBackoffUntil) return;
     void fetchStatusNow();
   }).pipe(Effect.repeat(Schedule.spaced(POLL_BASE_INTERVAL_MS)));
