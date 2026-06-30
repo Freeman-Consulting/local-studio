@@ -263,13 +263,15 @@ export function createApiCore(params: {
   const buildHeaders = (extraHeaders?: HeadersInit): Record<string, string> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
-    const storedBackendUrl = backendUrlOverride?.trim() || getStoredBackendUrl();
+    const explicitBackendUrl = backendUrlOverride?.trim();
+    const storedBackendUrl = explicitBackendUrl || getStoredBackendUrl();
     if (useProxy && storedBackendUrl) {
       headers["X-Backend-Url"] = storedBackendUrl;
-      // An explicitly selected controller is sticky: never let the proxy
-      // silently fall back to the default and clear the selection just because
-      // the chosen controller is momentarily unreachable.
-      headers["X-Backend-Strict"] = "1";
+      // Only programmatic probes/polls are strict. A browser-stored override can
+      // drift to a stale or non-control-plane URL; allow the proxy to fall back
+      // to the configured controller and clear the bad override instead of
+      // wedging core pages such as /recipes until the 30s client timeout fires.
+      if (explicitBackendUrl) headers["X-Backend-Strict"] = "1";
     }
 
     const storedKey = apiKeyOverride === undefined ? getApiKey() : apiKeyOverride.trim();

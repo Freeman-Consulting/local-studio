@@ -4,7 +4,10 @@ import type { ApiCore } from "./core";
 export function createRecipesApi(core: ApiCore) {
   return {
     getRecipes: async (): Promise<{ recipes: RecipeWithStatus[] }> => {
-      const data = await core.request<RecipeWithStatus[]>("/recipes");
+      const data = await core.request<RecipeWithStatus[]>("/recipes", {
+        timeout: 10_000,
+        retries: 0,
+      });
       return { recipes: Array.isArray(data) ? data : [] };
     },
 
@@ -20,4 +23,3 @@ export function createRecipesApi(core: ApiCore) {
       core.request(`/recipes/${id}`, { method: "DELETE" }),
   };
 }
-
