@@ -17,7 +17,6 @@ import {
   fleetControllersToSavedControllers,
   loadSavedControllers,
   normalizeControllerUrl,
-  savedControllersToFleetInputs,
   type SavedController,
 } from "@/lib/api/controllers";
 import type { GPU, ProcessInfo } from "@/lib/types";
@@ -76,18 +75,14 @@ function ControllerMatrix() {
     let cancelled = false;
     const localControllers = (): SavedController[] => {
       const saved = loadSavedControllers();
-      const byUrl = new Map<string, SavedController>();
       const activeUrl = normalizeControllerUrl(getStoredBackendUrl());
-      for (const controller of saved) {
-        const url = normalizeControllerUrl(controller.url);
-        if (url) byUrl.set(url, { ...controller, url });
-      }
-      if (activeUrl && !byUrl.has(activeUrl)) byUrl.set(activeUrl, { url: activeUrl });
-      if (byUrl.size === 0) {
-        const primary = normalizeControllerUrl(getStoredBackendUrl() || "http://127.0.0.1:8080");
-        if (primary) byUrl.set(primary, { url: primary });
-      }
-      return [...byUrl.values()];
+      const active = saved.find(
+        (controller) => normalizeControllerUrl(controller.url) === activeUrl,
+      );
+      if (activeUrl) return [{ ...active, url: activeUrl }];
+      const primary = saved.find((controller) => /control[-\s]?plane/i.test(controller.name ?? ""));
+      if (primary) return [{ ...primary, url: normalizeControllerUrl(primary.url) }];
+      return [];
     };
     const applyControllers = (next: SavedController[]) => {
       const urls = new Set(next.map((controller) => normalizeControllerUrl(controller.url)));
@@ -100,11 +95,11 @@ function ControllerMatrix() {
       const local = localControllers();
       applyControllers(local);
       try {
-        const inputs = savedControllersToFleetInputs(local);
-        if (inputs.length > 0) await api.importFleetControllers(inputs);
         const fleet = await api.getFleetControllers();
-        if (!cancelled && fleet.length > 0)
-          applyControllers(fleetControllersToSavedControllers(fleet, local));
+        const controlPlanes = fleet.filter((controller) => controller.role === "control-plane");
+        if (!cancelled && controlPlanes.length > 0) {
+          applyControllers(fleetControllersToSavedControllers(controlPlanes, local));
+        }
       } catch {
         if (!cancelled) applyControllers(local);
       }
