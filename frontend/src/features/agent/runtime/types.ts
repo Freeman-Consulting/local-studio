@@ -11,6 +11,7 @@ import type { RuntimeContextUsage } from "@/features/agent/runtime/api";
 export type SessionId = string;
 
 export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done" | string;
+export type AgentRuntimeKind = "pi" | "hermes";
 
 /**
  * A `Session` is a conversation record — domain content and runtime status,
@@ -20,6 +21,7 @@ export type SessionStatus = "idle" | "starting" | "running" | "loading" | "done"
 export type Session = {
   id: SessionId;
   runtimeSessionId: string;
+  runtimeKind?: AgentRuntimeKind;
   piSessionId: string | null;
   projectId?: string;
   cwd?: string;

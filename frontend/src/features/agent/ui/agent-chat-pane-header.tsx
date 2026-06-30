@@ -15,6 +15,8 @@ const CHAT_HEADER_MENU_CLASS =
 
 export function AgentChatPaneHeader({
   title,
+  runtimeKind,
+  onRuntimeKindChange,
   pinned,
   rightPanelOpen,
   canFork,
@@ -28,6 +30,8 @@ export function AgentChatPaneHeader({
   onToggleRightPanel,
 }: {
   title: string;
+  runtimeKind: "pi" | "hermes";
+  onRuntimeKindChange: (runtime: "pi" | "hermes") => void;
   pinned: boolean;
   rightPanelOpen: boolean;
   canFork: boolean;
@@ -149,6 +153,18 @@ export function AgentChatPaneHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <select
+          value={runtimeKind}
+          onChange={(event) =>
+            onRuntimeKindChange(event.target.value === "hermes" ? "hermes" : "pi")
+          }
+          className="h-7 rounded-sm border border-(--border) bg-(--surface) px-1.5 text-[11px] font-medium text-(--fg) outline-none"
+          title="Agent runtime"
+          aria-label="Agent runtime"
+        >
+          <option value="pi">Pi</option>
+          <option value="hermes">Hermes</option>
+        </select>
         {canClose ? (
           <button
             type="button"

@@ -155,6 +155,35 @@ export type SubmitTurnArgs = {
   promptTemplates?: ComposerPromptTemplateRef[];
 };
 
+export type HermesTurnResult = {
+  ok: boolean;
+  text: string;
+  exitCode: number | null;
+  profile: string;
+  cwd: string;
+};
+
+export async function submitHermesTurn(args: {
+  message: string;
+  cwd: string;
+  profile?: string;
+}): Promise<HermesTurnResult> {
+  const response = await fetch("/api/agent/hermes/turn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  const payload = await safeJson<{ error?: string } & Partial<HermesTurnResult>>(response);
+  if (!response.ok) throw new Error(payload.error || `Hermes request failed: ${response.status}`);
+  return {
+    ok: payload.ok === true,
+    text: typeof payload.text === "string" ? payload.text : "",
+    exitCode: typeof payload.exitCode === "number" ? payload.exitCode : null,
+    profile: typeof payload.profile === "string" ? payload.profile : (args.profile ?? "default"),
+    cwd: typeof payload.cwd === "string" ? payload.cwd : args.cwd,
+  };
+}
+
 export async function submitTurnCommand(args: SubmitTurnArgs): Promise<AgentTurnCommandResult> {
   const response = await fetch("/api/agent/turn", {
     method: "POST",

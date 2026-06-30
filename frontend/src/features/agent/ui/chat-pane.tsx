@@ -126,6 +126,7 @@ type Props = {
   cwd: string;
   projectName: string | null;
   modelSelector?: ReactNode;
+  runtimeKind?: "pi" | "hermes";
   gitBranch?: string | null;
   gitSummary?: GitSummary | null;
   onInitGit?: () => void;
@@ -160,6 +161,7 @@ export function ChatPane({
   cwd,
   projectName,
   modelSelector,
+  runtimeKind = "pi",
   gitBranch,
   gitSummary,
   onInitGit,
@@ -372,6 +374,12 @@ export function ChatPane({
       {showHeader ? (
         <AgentChatPaneHeader
           title={displayedSessionTitle}
+          runtimeKind={runtimeKind}
+          onRuntimeKindChange={(nextRuntime) =>
+            activeTab
+              ? updateTab(activeTab.id, (tab) => ({ ...tab, runtimeKind: nextRuntime }))
+              : undefined
+          }
           pinned={sessionPinned}
           rightPanelOpen={rightPanelOpen}
           canFork={Boolean(onForkSession)}

@@ -71,6 +71,10 @@ export async function submitPromptTurn(deps: PromptStreamDeps, args: SubmitArgs)
   if (!context) return;
 
   appendOptimisticPrompt(deps, context, args);
+  if ((context.selected.runtimeKind ?? "pi") === "hermes") {
+    await startHermesPromptCommand(deps, context, args);
+    return;
+  }
   await startPromptCommand(deps, context, args);
 }
 
@@ -133,6 +137,55 @@ function appendOptimisticPrompt(
       { id: context.assistantId, role: "assistant", text: "", blocks: [], timestamp: nowLabel() },
     ],
   }));
+}
+
+async function startHermesPromptCommand(
+  deps: PromptStreamDeps,
+  context: PromptTurnContext,
+  args: SubmitArgs,
+): Promise<void> {
+  try {
+    const result = await api.submitHermesTurn({
+      message: args.prompt,
+      cwd: deps.cwd,
+      profile: "default",
+    });
+    deps.updateSession(context.sessionId, (session) => ({
+      ...session,
+      status: result.ok ? "done" : "idle",
+      error: result.ok ? "" : `Hermes exited with code ${result.exitCode ?? "unknown"}`,
+      activeAssistantId: undefined,
+      messages: session.messages.map((message) =>
+        message.id === context.assistantId
+          ? {
+              ...message,
+              text: result.text || "Hermes completed with no output.",
+              blocks: [
+                {
+                  kind: "text" as const,
+                  id: newId("text"),
+                  text: result.text || "Hermes completed with no output.",
+                },
+              ],
+            }
+          : message,
+      ),
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Hermes request failed";
+    deps.updateSession(context.sessionId, (session) =>
+      settleFailedTurn(
+        {
+          ...session,
+          messages: session.messages.map((entry) =>
+            entry.id === context.assistantId ? { ...entry, text: message } : entry,
+          ),
+        },
+        context.assistantId,
+        message,
+      ),
+    );
+  }
 }
 
 async function startPromptCommand(

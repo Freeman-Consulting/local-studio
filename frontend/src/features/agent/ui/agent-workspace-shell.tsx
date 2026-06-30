@@ -332,6 +332,7 @@ function renderWorkspacePane({
           loading={state.modelsLoading}
         />
       }
+      runtimeKind={view.session?.runtimeKind ?? "pi"}
       browserToolEnabled={browserPanelOpen}
       browserBackend={tools.browser.backend}
       onToggleBrowserBackend={tools.toggleBrowserBackend}
