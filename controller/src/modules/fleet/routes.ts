@@ -88,10 +88,12 @@ const routeInput = (record: Record<string, unknown>): FleetRouteInput => {
   const name = optionalText(record, "name");
   const controllerId = optionalText(record, "controllerId");
   const modelId = optionalText(record, "modelId");
+  const endpointUrl = optionalText(record, "endpointUrl");
   if (!name) throw badRequest("fleet route name is required");
   if (!controllerId) throw badRequest("fleet route controllerId is required");
   if (!modelId) throw badRequest("fleet route modelId is required");
   const input: FleetRouteInput = { name, controllerId, modelId };
+  assignDefined(input, "endpointUrl", endpointUrl);
   assignDefined(input, "enabled", optionalEnabled(record));
   assignDefined(input, "fallbackRouteId", optionalNullableText(record, "fallbackRouteId"));
   assignDefined(input, "tags", optionalStringArray(record, "tags"));
@@ -107,6 +109,7 @@ const routeUpdate = (record: Record<string, unknown>): FleetRouteUpdateInput => 
   assignDefined(input, "name", optionalText(record, "name"));
   assignDefined(input, "controllerId", optionalText(record, "controllerId"));
   assignDefined(input, "modelId", optionalText(record, "modelId"));
+  assignDefined(input, "endpointUrl", optionalText(record, "endpointUrl"));
   assignDefined(input, "enabled", optionalEnabled(record));
   assignDefined(input, "fallbackRouteId", optionalNullableText(record, "fallbackRouteId"));
   assignDefined(input, "tags", optionalStringArray(record, "tags"));
@@ -234,7 +237,7 @@ export const registerFleetRoutes: RouteRegistrar = (app, context) => {
     const route = store.getRouteTarget(ctx.req.param("id"));
     if (!route) throw notFound("fleet route not found");
     if (!route.enabled) throw new HttpStatus(409, "fleet route is disabled");
-    const response = await fetch(routePath(route.controllerUrl, "/v1/models"), { headers: routeHeaders(route.apiKey) });
+    const response = await fetch(routePath(route.endpointUrl, "/v1/models"), { headers: routeHeaders(route.apiKey) });
     const text = await response.text();
     return new Response(text, {
       status: response.status,
@@ -257,7 +260,7 @@ export const registerFleetRoutes: RouteRegistrar = (app, context) => {
       ...payload,
       model: route.modelId,
     };
-    const response = await fetch(routePath(route.controllerUrl, "/v1/chat/completions"), {
+    const response = await fetch(routePath(route.endpointUrl, "/v1/chat/completions"), {
       method: "POST",
       headers: routeHeaders(route.apiKey),
       body: JSON.stringify(upstreamPayload),

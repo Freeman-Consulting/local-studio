@@ -69,6 +69,7 @@ export interface FleetRouteInput {
   name: string;
   controllerId: string;
   modelId: string;
+  endpointUrl?: string;
   enabled?: boolean;
   fallbackRouteId?: string | null;
   tags?: string[];
@@ -82,6 +83,7 @@ export interface FleetRouteUpdateInput {
   name?: string;
   controllerId?: string;
   modelId?: string;
+  endpointUrl?: string;
   enabled?: boolean;
   fallbackRouteId?: string | null;
   tags?: string[];
@@ -97,6 +99,7 @@ export interface FleetRoute {
   controllerId: string;
   controllerName: string;
   controllerUrl: string;
+  endpointUrl: string;
   modelId: string;
   enabled: boolean;
   fallbackRouteId: string | null;

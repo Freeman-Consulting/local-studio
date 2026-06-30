@@ -98,15 +98,15 @@ cc5f9e59 fix(agent): cache session prefs server snapshot
 
 ### Fleet registry and operator page
 
-Fleet has a shared controller registry backed by the control-plane SQLite database.
+Fleet now treats a controller as a machine/host, not an individual model port. The shared controller registry is backed by the control-plane SQLite database.
 
 The `/fleet` page now shows:
 
-- registered controllers
+- registered machine controllers (`mac-mini-llm`, `main-llm`, `gn100` shape)
 - per-controller health/status
 - route aliases
-- models grouped by controller
-- add/delete controller forms
+- models grouped by machine controller
+- add/delete machine controller forms
 - add/delete route alias forms
 - route alias smoke test button
 
@@ -114,13 +114,14 @@ The `/fleet` page now shows:
 
 Current implementation:
 
-- Models are grouped under their owning controller.
+- Models are grouped under their owning machine controller.
 - Each controller group is collapsible.
-- Controller name is the primary label.
-- Controller URL/IP is secondary muted metadata.
+- Machine/controller name is the primary label.
+- Machine URL/IP is secondary muted metadata.
 - Each group shows role, online status, model count, and model IDs.
+- Groups include probed `/v1/models` entries plus route-implied models.
 - Groups default open.
-- Browser smoke verified that clicking the group summary collapses the model list.
+- Browser smoke previously verified that clicking the group summary collapses the model list.
 
 Primary file:
 
@@ -144,6 +145,8 @@ Behavior:
 - resolve route by id or name
 - disabled route returns `409`
 - missing route returns `404`
+- route binds machine controller + `modelId` + optional `endpointUrl`
+- route proxies to `endpointUrl` when present, otherwise falls back to the machine controller URL for backwards compatibility
 - route enforces configured `modelId`
 - route merges default params
 - controller API key is forwarded server-side only
@@ -281,20 +284,27 @@ Do not trust delayed Hermes background-process watch notifications by themselves
 
 ## Known live fleet inventory
 
-Registered endpoints observed in Fleet include:
+Machine/controller shape should be:
 
 ```text
-mac-mini-llm local control plane -> http://mac-mini-llm.tail0c73a2.ts.net:8081
-qwen35-9b-llamacpp             -> http://127.0.0.1:11436
-nomic-embed-llamacpp           -> http://127.0.0.1:11437
-mlx-qwen36-35b                 -> http://127.0.0.1:11450
-mlx-vlm-qwen3-vl               -> http://127.0.0.1:11453
-mlx-whisper                    -> http://127.0.0.1:11454
-qwen36-27b-mtp-llamacpp        -> http://127.0.0.1:18008
-qwen36-27b-mtp-alt             -> http://127.0.0.1:18082
+mac-mini-llm -> http://mac-mini-llm.tail0c73a2.ts.net:8081
+main-llm     -> <confirmed main-llm machine/controller URL>
+gn100        -> <confirmed gn100 machine/controller URL>
 ```
 
-These are currently local to `mac-mini-llm`. Future work should register real remote `main-llm` and `gn100` endpoints with explicit host identity once their OpenAI-compatible or telemetry endpoints are confirmed.
+Model endpoints observed on `mac-mini-llm` include:
+
+```text
+qwen35-9b-llamacpp      -> http://127.0.0.1:11436
+nomic-embed-llamacpp    -> http://127.0.0.1:11437
+mlx-qwen36-35b          -> http://127.0.0.1:11450
+mlx-vlm-qwen3-vl        -> http://127.0.0.1:11453
+mlx-whisper             -> http://127.0.0.1:11454
+qwen36-27b-mtp-llamacpp -> http://127.0.0.1:18008
+qwen36-27b-mtp-alt      -> http://127.0.0.1:18082
+```
+
+These model endpoints belong under the `mac-mini-llm` controller as model/route endpoint metadata, not as separate controllers. Future work should register real remote `main-llm` and `gn100` machine controllers and then add route aliases for their confirmed OpenAI-compatible model endpoints.
 
 ## Next steps
 

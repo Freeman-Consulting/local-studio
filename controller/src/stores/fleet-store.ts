@@ -40,6 +40,7 @@ type FleetRouteRow = {
   controller_id: string;
   controller_name: string;
   controller_url: string;
+  endpoint_url: string | null;
   model_id: string;
   enabled: number;
   fallback_route_id: string | null;
@@ -144,6 +145,7 @@ const mapRoute = (row: FleetRouteRow): FleetRoute => ({
   controllerId: row.controller_id,
   controllerName: row.controller_name,
   controllerUrl: row.controller_url,
+  endpointUrl: row.endpoint_url || row.controller_url,
   modelId: row.model_id,
   enabled: Boolean(row.enabled),
   fallbackRouteId: row.fallback_route_id,
@@ -271,6 +273,7 @@ export class SqliteFleetStore implements FleetStore {
         name TEXT NOT NULL UNIQUE,
         controller_id TEXT NOT NULL,
         model_id TEXT NOT NULL,
+        endpoint_url TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         fallback_route_id TEXT,
         tags_json TEXT NOT NULL DEFAULT '[]',
@@ -284,7 +287,13 @@ export class SqliteFleetStore implements FleetStore {
         FOREIGN KEY (fallback_route_id) REFERENCES fleet_routes(id) ON DELETE SET NULL
       )
     `);
+    this.addColumnIfMissing("fleet_routes", "endpoint_url", "TEXT");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_fleet_routes_controller_id ON fleet_routes(controller_id)");
+  }
+
+  private addColumnIfMissing(table: string, column: string, definition: string): void {
+    const rows = this.db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all();
+    if (!rows.some((row) => row.name === column)) this.db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   public list(): FleetController[] {
@@ -411,15 +420,16 @@ export class SqliteFleetStore implements FleetStore {
     const route = this.prepareRoute(input);
     this.db.query(`
       INSERT INTO fleet_routes (
-        id, name, controller_id, model_id, enabled, fallback_route_id, tags_json,
+        id, name, controller_id, model_id, endpoint_url, enabled, fallback_route_id, tags_json,
         trust_level, disruption_cost, default_params_json, notes, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       route.id,
       route.name,
       route.controllerId,
       route.modelId,
+      route.endpointUrl,
       route.enabled ? 1 : 0,
       route.fallbackRouteId,
       JSON.stringify(route.tags),
@@ -440,6 +450,7 @@ export class SqliteFleetStore implements FleetStore {
       name: input.name ?? existing.name,
       controllerId: input.controllerId ?? existing.controller_id,
       modelId: input.modelId ?? existing.model_id,
+      endpointUrl: input.endpointUrl ?? existing.endpoint_url ?? existing.controller_url,
       enabled: input.enabled ?? Boolean(existing.enabled),
       fallbackRouteId: input.fallbackRouteId === undefined ? existing.fallback_route_id : input.fallbackRouteId,
       tags: input.tags ?? parseStringArray(existing.tags_json),
@@ -450,13 +461,14 @@ export class SqliteFleetStore implements FleetStore {
     }, id, existing.created_at);
     this.db.query(`
       UPDATE fleet_routes
-      SET name = ?, controller_id = ?, model_id = ?, enabled = ?, fallback_route_id = ?,
+      SET name = ?, controller_id = ?, model_id = ?, endpoint_url = ?, enabled = ?, fallback_route_id = ?,
           tags_json = ?, trust_level = ?, disruption_cost = ?, default_params_json = ?, notes = ?, updated_at = ?
       WHERE id = ?
     `).run(
       route.name,
       route.controllerId,
       route.modelId,
+      route.endpointUrl,
       route.enabled ? 1 : 0,
       route.fallbackRouteId,
       JSON.stringify(route.tags),
@@ -510,6 +522,7 @@ export class SqliteFleetStore implements FleetStore {
         r.controller_id,
         c.name AS controller_name,
         c.url AS controller_url,
+        r.endpoint_url,
         r.model_id,
         r.enabled,
         r.fallback_route_id,
@@ -559,6 +572,7 @@ export class SqliteFleetStore implements FleetStore {
       controllerName: controller.name,
       controllerUrl: controller.url,
       modelId,
+      endpointUrl: input.endpointUrl ? normalizeFleetControllerUrl(input.endpointUrl) : controller.url,
       enabled: input.enabled ?? true,
       fallbackRouteId,
       tags: this.normalizeRouteTags(input.tags),

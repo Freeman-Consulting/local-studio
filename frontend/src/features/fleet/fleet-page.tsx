@@ -85,6 +85,7 @@ export default function FleetPage() {
     name: "",
     controllerId: "",
     modelId: "",
+    endpointUrl: "",
     enabled: true,
     tags: [],
     trustLevel: "",
@@ -96,13 +97,32 @@ export default function FleetPage() {
   const modelsByController = useMemo(
     () =>
       state.controllers
-        .map((controller) => ({
-          controller,
-          status: controllerStatus(controller, state.statuses),
-          models: state.models.filter((model) => model.controllerId === controller.id),
-        }))
+        .map((controller) => {
+          const reportedModels = state.models.filter(
+            (model) => model.controllerId === controller.id,
+          );
+          const reportedModelIds = new Set(reportedModels.map((model) => model.modelId));
+          const routeModels = state.routes
+            .filter(
+              (route) =>
+                route.controllerId === controller.id && !reportedModelIds.has(route.modelId),
+            )
+            .map((route) => ({
+              id: `${controller.id}:${route.modelId}:route:${route.id}`,
+              controllerId: controller.id,
+              controllerName: controller.name,
+              modelId: route.modelId,
+              backend: `route ${route.name}`,
+              checkedAt: route.updatedAt,
+            }));
+          return {
+            controller,
+            status: controllerStatus(controller, state.statuses),
+            models: [...reportedModels, ...routeModels],
+          };
+        })
         .filter((group) => group.models.length > 0),
-    [state.controllers, state.models, state.statuses],
+    [state.controllers, state.models, state.routes, state.statuses],
   );
 
   const onlineCount = useMemo(
@@ -186,6 +206,7 @@ export default function FleetPage() {
         name: routeForm.name,
         controllerId: routeForm.controllerId,
         modelId: routeForm.modelId,
+        endpointUrl: routeForm.endpointUrl || undefined,
         tags: routeForm.tags,
         trustLevel: routeForm.trustLevel || undefined,
         disruptionCost: routeForm.disruptionCost || undefined,
@@ -195,6 +216,7 @@ export default function FleetPage() {
         name: "",
         controllerId: "",
         modelId: "",
+        endpointUrl: "",
         enabled: true,
         tags: [],
         trustLevel: "",
@@ -242,7 +264,7 @@ export default function FleetPage() {
     <AppPage className="px-4 py-5 md:px-6 lg:px-8">
       <PageHeader
         eyebrow="Fleet control plane"
-        title="Shared controllers"
+        title="Fleet machines"
         status={
           <div className="flex items-center gap-2">
             <StatusPill tone={onlineCount > 0 ? "good" : "default"} variant="badge">
@@ -273,7 +295,7 @@ export default function FleetPage() {
             <div className="border-b border-(--border)/60 px-4 py-3">
               <div className="flex items-center gap-2 text-[length:var(--fs-lg)] font-semibold text-(--fg)">
                 <Network className="h-4 w-4 text-(--color-sky-400)" />
-                Registered controllers
+                Registered machine controllers
               </div>
               <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
                 This list is stored in the control-plane SQLite database, not in this browser.
@@ -282,8 +304,7 @@ export default function FleetPage() {
             <div className="divide-y divide-(--border)/45">
               {state.controllers.length === 0 ? (
                 <div className="px-4 py-8 text-[length:var(--fs-sm)] text-(--dim)">
-                  No controllers are registered yet. Add the control plane or another Local Studio
-                  controller.
+                  No machine controllers are registered yet. Add mac-mini-llm, main-llm, or gn100.
                 </div>
               ) : (
                 state.controllers.map((controller) => {
@@ -358,7 +379,8 @@ export default function FleetPage() {
                 Route aliases
               </div>
               <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
-                Operator-facing names for controller/model lanes.
+                Operator-facing names for machine/model lanes. Each route can target a specific
+                model endpoint on its machine.
               </p>
             </div>
             <div className="divide-y divide-(--border)/45">
@@ -389,7 +411,8 @@ export default function FleetPage() {
                         ) : null}
                       </div>
                       <div className="mt-1 truncate text-[length:var(--fs-sm)] text-(--dim)">
-                        {route.controllerName || route.controllerUrl} · {route.modelId}
+                        {route.controllerName || route.controllerUrl} · {route.modelId} ·{" "}
+                        {route.endpointUrl || route.controllerUrl}
                       </div>
                       {route.tags.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1">
@@ -440,7 +463,8 @@ export default function FleetPage() {
                 Models by controller
               </div>
               <p className="mt-1 text-[length:var(--fs-sm)] text-(--dim)">
-                Populated from each registered controller&apos;s `/v1/models` response.
+                Grouped by machine controller. Models are populated from registered/probed endpoints
+                and route aliases.
               </p>
             </div>
             <div className="divide-y divide-(--border)/45">
@@ -512,7 +536,7 @@ export default function FleetPage() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, url: event.target.value }))
                 }
-                placeholder="http://main-llm:8080"
+                placeholder="http://main-llm.tail0c73a2.ts.net:8081"
                 required
               />
               <Input
@@ -603,6 +627,13 @@ export default function FleetPage() {
                 }
                 placeholder="qwen27"
                 required
+              />
+              <Input
+                value={routeForm.endpointUrl ?? ""}
+                onChange={(event) =>
+                  setRouteForm((current) => ({ ...current, endpointUrl: event.target.value }))
+                }
+                placeholder="model endpoint URL, defaults to selected machine URL"
               />
               <Input
                 value={(routeForm.tags ?? []).join(", ")}
