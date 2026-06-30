@@ -91,8 +91,59 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
 
   const reload = useCallback(async () => {
     try {
-      const data = await api.getRecipes();
-      const list = data.recipes || [];
+      const data = await api.getModels();
+      const list = (data.models || [])
+        .filter((model) => Array.isArray(model.recipe_ids) && model.recipe_ids.length > 0)
+        .filter((model) => {
+          const value = `${model.name} ${model.path}`.toLowerCase();
+          return !value.includes("embed") && !value.includes("whisper");
+        })
+        .map((model): RecipeWithStatus => {
+          const recipeId = model.recipe_ids?.[0] || model.name || model.path;
+          const servedName = currentProcess?.served_model_name?.toLowerCase() || "";
+          const modelName = model.name.toLowerCase();
+          const modelPath = model.path.toLowerCase();
+          const isRunning = Boolean(
+            currentProcess &&
+            (servedName === recipeId.toLowerCase() ||
+              servedName === modelName ||
+              currentProcess.model_path?.toLowerCase() === modelPath),
+          );
+          return {
+            id: recipeId,
+            name: model.name,
+            model_path: model.path,
+            backend: recipeId.startsWith("fleet-route-") ? "llamacpp" : "vllm",
+            env_vars: null,
+            tensor_parallel_size: 1,
+            pipeline_parallel_size: 1,
+            max_model_len: model.context_length ?? 4096,
+            gpu_memory_utilization: 0.9,
+            kv_cache_dtype: "auto",
+            max_num_seqs: 256,
+            trust_remote_code: false,
+            tool_call_parser: null,
+            reasoning_parser: null,
+            enable_auto_tool_choice: false,
+            quantization: model.quantization ?? null,
+            dtype: null,
+            host: "127.0.0.1",
+            port: currentProcess?.port ?? 8000,
+            served_model_name: model.name,
+            python_path: null,
+            extra_args: {
+              metadata: {
+                status_dropdown_model: true,
+                fleet_capabilities: ["chat"],
+              },
+            },
+            max_thinking_tokens: null,
+            thinking_mode: "auto",
+            status: isRunning ? "running" : "stopped",
+            tp: 1,
+            pp: 1,
+          };
+        });
       setRecipes(list);
 
       const running = currentProcess
@@ -101,7 +152,7 @@ export function useDashboardRecipes(currentProcess: ProcessInfo | null) {
       setCurrentRecipe(running);
       await refreshLogs(running);
     } catch (e) {
-      console.error("Failed to load recipes:", e);
+      console.error("Failed to load status model options:", e);
     } finally {
       setLoading(false);
     }
