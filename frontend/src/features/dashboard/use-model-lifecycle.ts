@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 import api from "@/lib/api/client";
 import type { ProcessInfo, RecipeWithStatus } from "@/lib/types";
 import { useRealtimeStatus } from "@/hooks/use-realtime-status";
@@ -26,27 +26,9 @@ const matchesProcess = (recipe: RecipeWithStatus, process: ProcessInfo): boolean
   return recipe.id === process.served_model_name;
 };
 
-export function useModelLifecycle(): ModelLifecycle {
+export function useModelLifecycle(recipes: RecipeWithStatus[] = []): ModelLifecycle {
   const realtime = useRealtimeStatus();
-  const [recipes, setRecipes] = useState<RecipeWithStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const subscribeRecipes = useCallback((_notify: () => void) => {
-    let cancelled = false;
-    api
-      .getRecipes()
-      .then((data) => {
-        if (!cancelled) setRecipes(data.recipes || []);
-      })
-      .catch(() => {
-        if (!cancelled) setRecipes([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useSyncExternalStore(subscribeRecipes, getModelLifecycleSnapshot, getModelLifecycleSnapshot);
 
   const activeRecipeId = useMemo(() => {
     const process = realtime.status?.process;
@@ -95,5 +77,3 @@ export function useModelLifecycle(): ModelLifecycle {
     stop,
   };
 }
-
-const getModelLifecycleSnapshot = (): number => 0;
