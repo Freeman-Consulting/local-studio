@@ -1,4 +1,4 @@
-import { badRequest, notFound } from "../../core/errors";
+import { badRequest, HttpStatus, notFound } from "../../core/errors";
 import { parseJsonObjectBody } from "../../core/validation";
 import type { RouteRegistrar } from "../../http/route-registrar";
 import type {
@@ -136,6 +136,13 @@ const mapBadRequest = (error: unknown): never => {
   throw badRequest(error instanceof Error ? error.message : String(error));
 };
 
+const routePath = (baseUrl: string, path: string): string => `${baseUrl.replace(/\/+$/, "")}${path}`;
+
+const routeHeaders = (apiKey: string | null): Record<string, string> => ({
+  "content-type": "application/json",
+  ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+});
+
 export const registerFleetRoutes: RouteRegistrar = (app, context) => {
   const store = context.stores.fleetStore;
 
@@ -221,6 +228,45 @@ export const registerFleetRoutes: RouteRegistrar = (app, context) => {
   app.delete("/fleet/routes/:id", (ctx) => {
     if (!store.deleteRoute(ctx.req.param("id"))) throw notFound("fleet route not found");
     return ctx.json({ success: true });
+  });
+
+  app.get("/fleet/routes/:id/v1/models", async (ctx) => {
+    const route = store.getRouteTarget(ctx.req.param("id"));
+    if (!route) throw notFound("fleet route not found");
+    if (!route.enabled) throw new HttpStatus(409, "fleet route is disabled");
+    const response = await fetch(routePath(route.controllerUrl, "/v1/models"), { headers: routeHeaders(route.apiKey) });
+    const text = await response.text();
+    return new Response(text, {
+      status: response.status,
+      headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
+    });
+  });
+
+  app.post("/fleet/routes/:id/v1/chat/completions", async (ctx) => {
+    const route = store.getRouteTarget(ctx.req.param("id"));
+    if (!route) throw notFound("fleet route not found");
+    if (!route.enabled) throw new HttpStatus(409, "fleet route is disabled");
+    let payload: Record<string, unknown>;
+    try {
+      payload = await parseJsonObjectBody(ctx);
+    } catch {
+      throw badRequest("Invalid JSON body");
+    }
+    const upstreamPayload = {
+      ...route.defaultParams,
+      ...payload,
+      model: route.modelId,
+    };
+    const response = await fetch(routePath(route.controllerUrl, "/v1/chat/completions"), {
+      method: "POST",
+      headers: routeHeaders(route.apiKey),
+      body: JSON.stringify(upstreamPayload),
+      signal: ctx.req.raw.signal,
+    });
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
+    });
   });
 
   app.get("/fleet/status", async (ctx) => {

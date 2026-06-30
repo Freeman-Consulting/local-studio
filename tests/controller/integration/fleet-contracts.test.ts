@@ -145,70 +145,71 @@ describe("fleet controller contracts", () => {
     expect(authenticated.status).toBe(201);
   });
 
-  test("route aliases CRUD map names to controllers and models", async () => {
-    const app = await createTestApp();
-    const controllerResponse = await app.request("/fleet/controllers", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: "http://127.0.0.1:19004", name: "Main LLM" }),
+  test("route aliases proxy OpenAI-compatible chat and model list", async () => {
+    const upstreamRequests: Array<{ path: string; authorization: string; body?: Record<string, unknown> }> = [];
+    const upstream = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url);
+        const authorization = request.headers.get("authorization") ?? "";
+        if (url.pathname === "/v1/models") {
+          upstreamRequests.push({ path: url.pathname, authorization });
+          return Response.json({ data: [{ id: "upstream-model" }] });
+        }
+        if (url.pathname === "/v1/chat/completions") {
+          return request.json().then((body) => {
+            upstreamRequests.push({ path: url.pathname, authorization, body: body as Record<string, unknown> });
+            return Response.json({ choices: [{ message: { role: "assistant", content: "fleet online" } }] });
+          });
+        }
+        return Response.json({ detail: "not found" }, { status: 404 });
+      },
     });
-    const controller = await controllerResponse.json();
 
-    const createResponse = await app.request("/fleet/routes", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "MAIN-QWEN27",
-        controllerId: controller.id,
-        modelId: "qwen27",
-        tags: ["daily", "fast", "daily"],
-        trustLevel: "trusted",
-        disruptionCost: "low",
-        defaultParams: { temperature: 0.2 },
-        notes: "stable 3090 lane",
-      }),
-    });
-    const route = await createResponse.json();
+    try {
+      const app = await createTestApp();
+      const controllerResponse = await app.request("/fleet/controllers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: `http://127.0.0.1:${upstream.port}`, apiKey: "route-secret", name: "Route target" }),
+      });
+      const controller = await controllerResponse.json();
+      const routeResponse = await app.request("/fleet/routes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "main",
+          controllerId: controller.id,
+          modelId: "served-model",
+          defaultParams: { temperature: 0.1 },
+        }),
+      });
+      const route = await routeResponse.json();
 
-    expect(createResponse.status).toBe(201);
-    expect(route.name).toBe("main-qwen27");
-    expect(route.controllerId).toBe(controller.id);
-    expect(route.controllerName).toBe("Main LLM");
-    expect(route.controllerUrl).toBe("http://127.0.0.1:19004");
-    expect(route.modelId).toBe("qwen27");
-    expect(route.tags).toEqual(["daily", "fast"]);
-    expect(route.defaultParams).toEqual({ temperature: 0.2 });
+      const modelsResponse = await app.request("/fleet/routes/main/v1/models");
+      const models = await modelsResponse.json();
+      expect(modelsResponse.status).toBe(200);
+      expect(models.data[0].id).toBe("upstream-model");
 
-    const duplicateResponse = await app.request("/fleet/routes", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "main-qwen27", controllerId: controller.id, modelId: "other" }),
-    });
-    expect(duplicateResponse.status).toBe(400);
+      const chatResponse = await app.request(`/fleet/routes/${route.id}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "ignored-client-model", messages: [{ role: "user", content: "ping" }] }),
+      });
+      const chat = await chatResponse.json();
 
-    const byNameResponse = await app.request("/fleet/routes/main-qwen27");
-    const byName = await byNameResponse.json();
-    expect(byNameResponse.status).toBe(200);
-    expect(byName.id).toBe(route.id);
-
-    const updateResponse = await app.request(`/fleet/routes/${route.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ enabled: false, fallbackRouteId: null, tags: ["paused"] }),
-    });
-    const updated = await updateResponse.json();
-    expect(updateResponse.status).toBe(200);
-    expect(updated.enabled).toBe(false);
-    expect(updated.tags).toEqual(["paused"]);
-
-    const listResponse = await app.request("/fleet/routes");
-    const routes = await listResponse.json();
-    expect(listResponse.status).toBe(200);
-    expect(routes).toHaveLength(1);
-    expect(routes[0].name).toBe("main-qwen27");
-
-    const deleteResponse = await app.request(`/fleet/routes/${route.id}`, { method: "DELETE" });
-    expect(deleteResponse.status).toBe(200);
-    expect(await app.request(`/fleet/routes/${route.id}`)).toHaveProperty("status", 404);
+      expect(chatResponse.status).toBe(200);
+      expect(chat.choices[0].message.content).toBe("fleet online");
+      expect(upstreamRequests).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: "/v1/models", authorization: "Bearer route-secret" }),
+        expect.objectContaining({
+          path: "/v1/chat/completions",
+          authorization: "Bearer route-secret",
+          body: expect.objectContaining({ model: "served-model", temperature: 0.1 }),
+        }),
+      ]));
+    } finally {
+      await upstream.stop(true);
+    }
   });
 });

@@ -28,9 +28,13 @@ type FleetApi = {
   getFleetModels: () => Promise<FleetModelEntry[]>;
   getFleetRoutes: () => Promise<FleetRoute[]>;
   getFleetRouteById: (id: string) => Promise<FleetRoute>;
-  createFleetRoute: (input: FleetRouteInput) => Promise<FleetRoute>;
-  updateFleetRoute: (id: string, input: FleetRouteUpdateInput) => Promise<FleetRoute>;
-  deleteFleetRoute: (id: string) => Promise<{ success: true }>;
+  createFleetRoute: (route: FleetRouteInput) => Promise<FleetRoute>;
+  updateFleetRoute: (id: string, route: FleetRouteUpdateInput) => Promise<FleetRoute>;
+  deleteFleetRoute: (id: string) => Promise<{ success: boolean }>;
+  runFleetRouteChatCompletion: (
+    id: string,
+    payload: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
 };
 
 const encodePathSegment = (segment: string): string =>
@@ -80,7 +84,12 @@ export const createFleetApi = (core: ApiCore): FleetApi => ({
       body: JSON.stringify(input),
     }),
   deleteFleetRoute: (id) =>
-    core.request<{ success: true }>(`/fleet/routes/${encodePathSegment(id)}`, {
+    core.request<{ success: boolean }>(`/fleet/routes/${encodePathSegment(id)}`, {
       method: "DELETE",
     }),
+  runFleetRouteChatCompletion: (id, payload) =>
+    core.request<Record<string, unknown>>(
+      `/fleet/routes/${encodePathSegment(id)}/v1/chat/completions`,
+      { method: "POST", body: JSON.stringify(payload), timeout: 120_000, retries: 0 },
+    ),
 });

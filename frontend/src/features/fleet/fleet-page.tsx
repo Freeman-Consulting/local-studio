@@ -37,6 +37,17 @@ const emptyFleetState = (): FleetState => ({
   checkedAt: null,
 });
 
+const assistantText = (payload: Record<string, unknown>): string => {
+  const choices = payload["choices"];
+  if (!Array.isArray(choices)) return JSON.stringify(payload);
+  const first = choices[0];
+  if (!first || typeof first !== "object") return JSON.stringify(payload);
+  const message = (first as Record<string, unknown>)["message"];
+  if (!message || typeof message !== "object") return JSON.stringify(payload);
+  const content = (message as Record<string, unknown>)["content"];
+  return typeof content === "string" ? content : JSON.stringify(payload);
+};
+
 const statusTone = (
   status: FleetControllerStatusResult["status"],
 ): "good" | "warning" | "danger" => {
@@ -61,6 +72,10 @@ export default function FleetPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingRoute, setSavingRoute] = useState(false);
+  const [testingRouteId, setTestingRouteId] = useState<string | null>(null);
+  const [routeTestResult, setRouteTestResult] = useState<{ routeId: string; text: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FleetControllerInput>({
     url: "",
@@ -193,6 +208,24 @@ export default function FleetPage() {
       await loadFleet();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
+    }
+  };
+
+  const testRoute = async (route: FleetRoute) => {
+    setError(null);
+    setRouteTestResult(null);
+    setTestingRouteId(route.id);
+    try {
+      const response = await api.runFleetRouteChatCompletion(route.name, {
+        messages: [{ role: "user", content: "Reply with exactly: fleet route online" }],
+        temperature: 0,
+        max_tokens: 12,
+      });
+      setRouteTestResult({ routeId: route.id, text: assistantText(response) });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setTestingRouteId(null);
     }
   };
 
@@ -363,8 +396,24 @@ export default function FleetPage() {
                           {route.notes}
                         </div>
                       ) : null}
+                      <div className="mt-2 rounded border border-(--border)/50 bg-(--surface-muted)/40 px-2 py-1.5 font-mono text-[length:var(--fs-xs)] text-(--dim)">
+                        POST /fleet/routes/{route.name}/v1/chat/completions
+                      </div>
+                      {routeTestResult?.routeId === route.id ? (
+                        <div className="mt-2 rounded border border-(--success)/35 bg-(--success)/10 px-2 py-1.5 text-[length:var(--fs-sm)] text-(--fg)">
+                          {routeTestResult.text}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex items-start justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => void testRoute(route)}
+                        disabled={!route.enabled || testingRouteId === route.id}
+                      >
+                        {testingRouteId === route.id ? "Testing…" : "Test"}
+                      </Button>
                       <Button size="sm" variant="secondary" onClick={() => void deleteRoute(route)}>
                         <Trash2 className="h-3.5 w-3.5" />
                         Delete

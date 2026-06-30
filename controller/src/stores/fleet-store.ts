@@ -54,6 +54,8 @@ type FleetRouteRow = {
 
 type FleetProbeTarget = FleetController & { apiKey: string | null };
 
+export type FleetRouteTarget = FleetRoute & { apiKey: string | null };
+
 type StatusBody = {
   running?: unknown;
   process?: {
@@ -221,6 +223,7 @@ export interface FleetStore {
   listRoutes(): FleetRoute[];
   getRoute(id: string): FleetRoute | null;
   getRouteByName(name: string): FleetRoute | null;
+  getRouteTarget(idOrName: string): FleetRouteTarget | null;
   createRoute(input: FleetRouteInput): FleetRoute;
   updateRoute(id: string, input: FleetRouteUpdateInput): FleetRoute | null;
   deleteRoute(id: string): boolean;
@@ -394,6 +397,14 @@ export class SqliteFleetStore implements FleetStore {
   public getRouteByName(name: string): FleetRoute | null {
     const row = this.routeQuery("WHERE r.name = ?", this.normalizeRouteName(name))[0];
     return row ? mapRoute(row) : null;
+  }
+
+  public getRouteTarget(idOrName: string): FleetRouteTarget | null {
+    const route = this.getRoute(idOrName) ?? this.getRouteByName(idOrName);
+    if (!route) return null;
+    const controller = this.db.query<FleetControllerRow, [string]>("SELECT * FROM fleet_controllers WHERE id = ?").get(route.controllerId);
+    if (!controller) return null;
+    return { ...route, apiKey: controller.api_key };
   }
 
   public createRoute(input: FleetRouteInput): FleetRoute {
