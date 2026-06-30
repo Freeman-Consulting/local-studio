@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "doctor": "bash scripts/doctor.sh",
+    "dev:tailnet:configure": "node scripts/configure-tailnet-dev.mjs",
+    "dev:tailnet:controller": "cd controller && bun src/main.ts",
+    "dev:tailnet:frontend": "node scripts/start-tailnet-frontend.mjs",
     "release:notes": "node scripts/release-statement.mjs",
     "release:check-commits": "node scripts/check-conventional-commits.mjs --range origin/main..HEAD",
     "setup:git-hooks": "git config core.hooksPath .githooks && chmod +x .githooks/*",
