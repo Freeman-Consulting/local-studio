@@ -1,4 +1,6 @@
 import type { RouteRegistrar } from "../../http/route-registrar";
+import type { FleetRoute } from "../../../../shared/contracts/fleet";
+import type { Recipe } from "../models/types";
 import { delay } from "../../core/async";
 import { HttpStatus, badRequest, notFound, serviceUnavailable } from "../../core/errors";
 import { optionalEnum, parseJsonObjectBody } from "../../core/validation";
@@ -39,6 +41,73 @@ const resolveHfToken = (
     process.env["HUGGINGFACE_TOKEN"] ??
     null;
   return bodyToken || headerToken || envToken;
+};
+
+
+const inferFleetRouteBackend = (route: FleetRoute): "llamacpp" | "mlx" => {
+  const haystack = `${route.name} ${route.endpointUrl} ${route.modelId}`.toLowerCase();
+  return haystack.includes("mlx") ? "mlx" : "llamacpp";
+};
+
+const endpointHost = (endpointUrl: string): { host: string; port: number } => {
+  try {
+    const parsed = new URL(endpointUrl);
+    return { host: parsed.hostname || "127.0.0.1", port: Number(parsed.port || 80) };
+  } catch {
+    return { host: "127.0.0.1", port: 0 };
+  }
+};
+
+const fleetRouteRecipeId = (route: FleetRoute): string => `fleet-route-${route.name}`;
+
+const fleetRouteToRecipe = (route: FleetRoute): Recipe & { status: "stopped"; tp: number; pp: number } => {
+  const endpoint = endpointHost(route.endpointUrl || route.controllerUrl);
+  const metadata = {
+    ...(route.defaultParams ?? {}),
+    metadata: {
+      ...(((route.defaultParams ?? {})["metadata"] as Record<string, unknown> | undefined) ?? {}),
+      fleet_route_id: route.id,
+      fleet_route_name: route.name,
+      fleet_controller_id: route.controllerId,
+      fleet_controller_name: route.controllerName,
+      fleet_endpoint_url: route.endpointUrl,
+      virtual_recipe: true,
+    },
+  };
+  return {
+    id: fleetRouteRecipeId(route) as Recipe["id"],
+    name: route.name,
+    model_path: route.endpointUrl || route.controllerUrl,
+    backend: inferFleetRouteBackend(route),
+    env_vars: null,
+    tensor_parallel_size: 1,
+    pipeline_parallel_size: 1,
+    max_model_len: 32768,
+    gpu_memory_utilization: 0,
+    kv_cache_dtype: "auto",
+    max_num_seqs: 256,
+    trust_remote_code: false,
+    tool_call_parser: null,
+    reasoning_parser: null,
+    enable_auto_tool_choice: false,
+    quantization: null,
+    dtype: null,
+    host: endpoint.host,
+    port: endpoint.port,
+    served_model_name: route.modelId,
+    python_path: null,
+    extra_args: metadata,
+    max_thinking_tokens: null,
+    thinking_mode: "conservative",
+    status: "stopped",
+    tp: 1,
+    pp: 1,
+  };
+};
+
+const getFleetRouteRecipe = (routes: FleetRoute[], recipeId: string): ReturnType<typeof fleetRouteToRecipe> | null => {
+  const route = routes.find((entry) => fleetRouteRecipeId(entry) === recipeId || entry.name === recipeId);
+  return route ? fleetRouteToRecipe(route) : null;
 };
 
 const RUNTIME_JOB_BACKENDS = ["vllm", "sglang", "llamacpp", "mlx", "cuda", "rocm"] as const;
@@ -90,13 +159,20 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
       if (current && isRecipeRunning(recipe, current)) status = "running";
       return { ...recipe, status, crash_loop: crashLoop };
     });
-    return ctx.json(result);
+    const fleetRouteRecipes = context.stores.fleetStore.listRoutes()
+      .filter((route) => route.enabled)
+      .map(fleetRouteToRecipe);
+    return ctx.json([...result, ...fleetRouteRecipes]);
   });
 
   app.get("/recipes/:recipeId", async (ctx) => {
     const recipeId = ctx.req.param("recipeId");
     const recipe = context.stores.recipeStore.get(recipeId);
-    if (!recipe) throw notFound("Recipe not found");
+    if (!recipe) {
+      const fleetRouteRecipe = getFleetRouteRecipe(context.stores.fleetStore.listRoutes(), recipeId);
+      if (fleetRouteRecipe) return ctx.json(fleetRouteRecipe);
+      throw notFound("Recipe not found");
+    }
     return ctx.json(recipe);
   });
 
@@ -141,7 +217,16 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   app.post("/launch/:recipeId", async (ctx) => {
     const recipeId = ctx.req.param("recipeId");
     const recipe = context.stores.recipeStore.get(recipeId);
-    if (!recipe) throw notFound("Recipe not found");
+    if (!recipe) {
+      const fleetRouteRecipe = getFleetRouteRecipe(context.stores.fleetStore.listRoutes(), recipeId);
+      if (fleetRouteRecipe) {
+        return ctx.json({
+          success: true,
+          message: `Fleet route ${fleetRouteRecipe.name} is already available; no local launch required`,
+        });
+      }
+      throw notFound("Recipe not found");
+    }
     const source =
       ctx.req.header("x-vllm-source") ??
       ctx.req.header("x-source") ??

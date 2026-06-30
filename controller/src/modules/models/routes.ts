@@ -30,6 +30,31 @@ import { observeControllerFunction } from "../../core/function-observability";
 import { parseBooleanFlag } from "../../core/validation";
 import { fetchInference } from "../../services/inference-client";
 
+
+const fleetModelId = (routeName: string): string => `fleet/${routeName}`;
+
+const routeModelInfo = (route: {
+  name: string;
+  modelId: string;
+  controllerName: string;
+  endpointUrl: string;
+  tags?: string[];
+  notes?: string;
+}): OpenAIModelInfo => ({
+  id: fleetModelId(route.name),
+  object: "model",
+  created: Math.floor(Date.now() / 1000),
+  owned_by: `fleet:${route.controllerName || "unknown"}`,
+  active: true,
+  metadata: {
+    fleet_route_name: route.name,
+    fleet_model_id: route.modelId,
+    fleet_endpoint_url: route.endpointUrl,
+    tags: route.tags ?? [],
+    notes: route.notes ?? "",
+  },
+});
+
 function isMockInferenceEnabled(): boolean {
   return parseBooleanFlag(process.env["LOCAL_STUDIO_MOCK_INFERENCE"]);
 }
@@ -95,6 +120,10 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         max_model_len: maxModelLength,
         ...(metadata ? { metadata } : {}),
       });
+    }
+
+    for (const route of context.stores.fleetStore.listRoutes().filter((entry) => entry.enabled)) {
+      models.push(routeModelInfo(route));
     }
 
     // Dev / mock-friendly fallback: when there are no recipes configured, still return a model so the UI
@@ -257,6 +286,20 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
       const info = await buildModelInfo(directory, recipeIds);
       models.push(info);
     }
+    for (const route of context.stores.fleetStore.listRoutes().filter((entry) => entry.enabled)) {
+      models.push({
+        path: route.endpointUrl || route.controllerUrl,
+        name: route.name,
+        size_bytes: null,
+        modified_at: null,
+        architecture: "fleet-route",
+        quantization: null,
+        context_length: null,
+        recipe_ids: [`fleet-route-${route.name}`],
+        has_recipe: true,
+      });
+    }
+
     models.sort((left, right) =>
       String(left.name).toLowerCase().localeCompare(String(right.name).toLowerCase())
     );

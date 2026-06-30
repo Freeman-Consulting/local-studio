@@ -204,6 +204,23 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     return null;
   };
 
+  const findFleetRouteByModel = (modelName: string) => {
+    const lower = modelName.toLowerCase();
+    const normalized = lower.startsWith("fleet/") ? lower.slice("fleet/".length) : lower;
+    const routes = context.stores.fleetStore.listRoutes().filter((route) => route.enabled);
+    const byName = routes.find((route) => route.name.toLowerCase() === normalized);
+    if (byName) return byName;
+    const byRecipeId = routes.find((route) => `fleet-route-${route.name}`.toLowerCase() === lower);
+    if (byRecipeId) return byRecipeId;
+    const byModel = routes.filter((route) => route.modelId.toLowerCase() === lower);
+    return byModel.length === 1 ? byModel[0] : null;
+  };
+
+  const fleetRouteHeaders = (apiKey: string | null): Record<string, string> => ({
+    "Content-Type": "application/json",
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  });
+
   app.post("/v1/chat/completions", async (ctx) => {
     let bodyBuffer: ArrayBuffer;
     try {
@@ -257,6 +274,8 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
       throw new HttpStatus(400, "Invalid JSON body");
     }
 
+    const matchedFleetRoute = requestedModel ? findFleetRouteByModel(requestedModel) : null;
+
     const providerModel = requestedModel
       ? parseProviderModel(requestedModel)
       : { provider: DEFAULT_CHAT_PROVIDER, modelId: "" };
@@ -280,11 +299,29 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
 
     if (
       !matchedRecipe &&
+      !matchedFleetRoute &&
       requestProvider === DEFAULT_CHAT_PROVIDER &&
       requestedModel &&
       context.config.strict_openai_models
     ) {
       throw notFound(`Model not managed: ${requestedModel}`);
+    }
+
+    if (matchedFleetRoute) {
+      parsed["model"] = matchedFleetRoute.modelId;
+      const target = context.stores.fleetStore.getRouteTarget(matchedFleetRoute.id);
+      if (!target) throw notFound(`Fleet route not found: ${matchedFleetRoute.name}`);
+      const upstreamUrl = `${target.endpointUrl.replace(/\/+$/, "")}/v1/chat/completions`;
+      const response = await fetch(upstreamUrl, {
+        method: "POST",
+        headers: fleetRouteHeaders(target.apiKey),
+        body: JSON.stringify(parsed),
+        signal: ctx.req.raw.signal,
+      });
+      return new Response(response.body, {
+        status: response.status,
+        headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
+      });
     }
 
     // Chat proxy never launches or switches models. The frontend's explicit
