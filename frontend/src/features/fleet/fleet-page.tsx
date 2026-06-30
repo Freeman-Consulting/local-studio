@@ -450,13 +450,16 @@ export default function FleetPage() {
                 </div>
               ) : (
                 modelsByController.map(({ controller, models, status }) => (
-                  <div key={controller.id} className="px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                  <details key={controller.id} open className="group px-4 py-3">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-(--surface-muted)/40 [&::-webkit-details-marker]:hidden">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-block text-[length:var(--fs-sm)] text-(--dim) group-open:rotate-90">
+                            ▸
+                          </span>
                           <StatusDot tone={status ? statusTone(status.status) : "default"} />
                           <span className="text-[length:var(--fs-lg)] font-semibold text-(--fg)">
-                            {controller.name || controller.url}
+                            {controller.name || "Unnamed controller"}
                           </span>
                           <StatusPill tone="default" variant="badge">
                             {controller.role}
@@ -475,8 +478,8 @@ export default function FleetPage() {
                       <div className="shrink-0 text-right text-[length:var(--fs-xs)] text-(--dim)">
                         {models.length} {models.length === 1 ? "model" : "models"}
                       </div>
-                    </div>
-                    <div className="mt-3 overflow-hidden rounded-md border border-(--border)/45">
+                    </summary>
+                    <div className="mt-2 overflow-hidden rounded-md border border-(--border)/45">
                       {models.map((model) => (
                         <div
                           key={`${model.controllerId}:${model.modelId}`}
@@ -491,7 +494,7 @@ export default function FleetPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </details>
                 ))
               )}
             </div>
