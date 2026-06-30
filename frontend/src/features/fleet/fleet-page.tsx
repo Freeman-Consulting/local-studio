@@ -9,6 +9,7 @@ import type {
   FleetControllerStatusResult,
   FleetModelEntry,
   FleetRoute,
+  FleetRouteCapability,
   FleetRouteInput,
 } from "@/lib/types";
 import { AppPage, Button, Card, Input, PageHeader, StatusDot, StatusPill } from "@/ui";
@@ -20,6 +21,8 @@ const roleOptions: FleetControllerRole[] = [
   "specialist",
   "operator-client",
 ];
+
+const capabilityOptions: FleetRouteCapability[] = ["chat", "embeddings", "vision", "audio"];
 
 type FleetState = {
   controllers: FleetController[];
@@ -88,6 +91,7 @@ export default function FleetPage() {
     endpointUrl: "",
     enabled: true,
     tags: [],
+    capabilities: ["chat"],
     trustLevel: "",
     disruptionCost: "",
     defaultParams: {},
@@ -208,6 +212,7 @@ export default function FleetPage() {
         modelId: routeForm.modelId,
         endpointUrl: routeForm.endpointUrl || undefined,
         tags: routeForm.tags,
+        capabilities: routeForm.capabilities,
         trustLevel: routeForm.trustLevel || undefined,
         disruptionCost: routeForm.disruptionCost || undefined,
         notes: routeForm.notes || undefined,
@@ -219,6 +224,7 @@ export default function FleetPage() {
         endpointUrl: "",
         enabled: true,
         tags: [],
+        capabilities: ["chat"],
         trustLevel: "",
         disruptionCost: "",
         defaultParams: {},
@@ -414,8 +420,13 @@ export default function FleetPage() {
                         {route.controllerName || route.controllerUrl} · {route.modelId} ·{" "}
                         {route.endpointUrl || route.controllerUrl}
                       </div>
-                      {route.tags.length > 0 ? (
+                      {route.tags.length > 0 || route.capabilities.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1">
+                          {route.capabilities.map((capability) => (
+                            <StatusPill key={capability} tone="info" variant="badge">
+                              {capability}
+                            </StatusPill>
+                          ))}
                           {route.tags.map((tag) => (
                             <StatusPill key={tag} tone="default" variant="badge">
                               {tag}
@@ -442,7 +453,11 @@ export default function FleetPage() {
                         size="sm"
                         variant="primary"
                         onClick={() => void testRoute(route)}
-                        disabled={!route.enabled || testingRouteId === route.id}
+                        disabled={
+                          !route.enabled ||
+                          !route.capabilities.includes("chat") ||
+                          testingRouteId === route.id
+                        }
                       >
                         {testingRouteId === route.id ? "Testing…" : "Test"}
                       </Button>
@@ -635,6 +650,33 @@ export default function FleetPage() {
                 }
                 placeholder="model endpoint URL, defaults to selected machine URL"
               />
+              <div className="space-y-1.5 rounded-md border border-(--border)/60 bg-(--surface-muted)/20 p-2">
+                <div className="font-mono text-[length:var(--fs-2xs)] uppercase tracking-[0.16em] text-(--dim)">
+                  Capabilities
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {capabilityOptions.map((capability) => (
+                    <label
+                      key={capability}
+                      className="inline-flex items-center gap-1.5 text-[length:var(--fs-sm)] text-(--fg)"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(routeForm.capabilities ?? []).includes(capability)}
+                        onChange={(event) =>
+                          setRouteForm((current) => {
+                            const capabilities = new Set(current.capabilities ?? []);
+                            if (event.target.checked) capabilities.add(capability);
+                            else capabilities.delete(capability);
+                            return { ...current, capabilities: [...capabilities] };
+                          })
+                        }
+                      />
+                      {capability}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <Input
                 value={(routeForm.tags ?? []).join(", ")}
                 onChange={(event) =>

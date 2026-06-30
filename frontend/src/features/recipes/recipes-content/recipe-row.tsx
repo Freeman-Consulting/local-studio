@@ -13,6 +13,11 @@ import {
 } from "@/ui";
 import { modelIdFromPath } from "@/lib/huggingface";
 import { engineNodeStyle, formatBackendLabel } from "@/features/recipes/recipe-labels";
+import {
+  isFleetRouteRecipe,
+  recipeCapabilities,
+  recipeSupportsCapability,
+} from "@/features/recipes/recipe-capabilities";
 
 type Props = {
   recipe: RecipeWithStatus;
@@ -34,6 +39,24 @@ function statusTone(status: string): ModelStatusTone {
   if (status === "starting") return "info";
   if (status === "error") return "danger";
   return "default";
+}
+
+const routeLaunchTitle = (
+  supportsChat: boolean,
+  capabilities: string | null,
+  launchDisabledReason?: string | null,
+): string => {
+  if (!supportsChat) return `Route supports ${capabilities ?? "non-chat"}, not chat launch`;
+  return launchDisabledReason ?? "Launch recipe";
+};
+
+function CapabilityBadge({ capabilities }: { capabilities: string | null }) {
+  if (!capabilities) return null;
+  return (
+    <span className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)">
+      {capabilities}
+    </span>
+  );
 }
 
 export const RecipeRow = memo(function RecipeRow({
@@ -79,9 +102,11 @@ export const RecipeRow = memo(function RecipeRow({
     ? `${recipe.max_model_len.toLocaleString()} ctx`
     : "ctx auto";
   const description = `${modelName} · ${context}`;
-  const engine = formatBackendLabel(recipe.backend);
+  const engine = isFleetRouteRecipe(recipe) ? "Fleet" : formatBackendLabel(recipe.backend);
   const engineStyle = engineNodeStyle(recipe.backend);
-  const launchTitle = launchDisabledReason ?? "Launch recipe";
+  const supportsChat = recipeSupportsCapability(recipe, "chat");
+  const capabilities = isFleetRouteRecipe(recipe) ? recipeCapabilities(recipe).join(", ") : null;
+  const launchTitle = routeLaunchTitle(supportsChat, capabilities, launchDisabledReason);
   const parallelism = `tp/pp ${tp}/${pp}`;
   const quant = recipe.quantization?.trim();
 
@@ -98,6 +123,7 @@ export const RecipeRow = memo(function RecipeRow({
             {engine}
           </span>
           <ModelValue mono>{parallelism}</ModelValue>
+          <CapabilityBadge capabilities={capabilities} />
           {quant ? (
             <span className="shrink-0 rounded bg-(--surface-2) px-1.5 py-0.5 text-[length:var(--fs-2xs)] text-(--dim)">
               {quant}
@@ -113,7 +139,11 @@ export const RecipeRow = memo(function RecipeRow({
               <Square className="h-3 w-3" />
             </ModelButton>
           ) : (
-            <ModelButton onClick={handleLaunch} disabled={launchDisabled} title={launchTitle}>
+            <ModelButton
+              onClick={handleLaunch}
+              disabled={launchDisabled || !supportsChat}
+              title={launchTitle}
+            >
               <Play className="h-3 w-3" />
             </ModelButton>
           )}

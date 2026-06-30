@@ -8,6 +8,7 @@ import type {
   FleetControllerUpdateInput,
   FleetModelEntry,
   FleetRoute,
+  FleetRouteCapability,
   FleetRouteInput,
   FleetRouteUpdateInput,
 } from "../../../shared/contracts/fleet";
@@ -45,6 +46,7 @@ type FleetRouteRow = {
   enabled: number;
   fallback_route_id: string | null;
   tags_json: string;
+  capabilities_json: string;
   trust_level: string;
   disruption_cost: string;
   default_params_json: string;
@@ -68,6 +70,40 @@ type StatusBody = {
 
 type ModelListBody = {
   data?: Array<{ id?: unknown; backend?: unknown }>;
+};
+
+
+const FLEET_ROUTE_CAPABILITIES = ["chat", "embeddings", "vision", "audio"] as const satisfies readonly FleetRouteCapability[];
+
+const inferRouteCapabilities = (name: string, modelId: string, tags: string[] = []): FleetRouteCapability[] => {
+  const haystack = `${name} ${modelId} ${tags.join(" ")}`.toLowerCase();
+  const capabilities = new Set<FleetRouteCapability>();
+  if (/embed|embedding|nomic|bge|e5/.test(haystack)) capabilities.add("embeddings");
+  if (/whisper|audio|transcrib|speech/.test(haystack)) capabilities.add("audio");
+  if (/vlm|vision|qwen3-vl|llava|multimodal/.test(haystack)) {
+    capabilities.add("vision");
+    capabilities.add("chat");
+  }
+  if (capabilities.size === 0) capabilities.add("chat");
+  return [...capabilities].sort();
+};
+
+const normalizeRouteCapabilities = (capabilities: unknown, name: string, modelId: string, tags: string[] = []): FleetRouteCapability[] => {
+  if (!Array.isArray(capabilities)) return inferRouteCapabilities(name, modelId, tags);
+  const normalized = Array.from(new Set(
+    capabilities
+      .map(trimString)
+      .filter((entry): entry is FleetRouteCapability => FLEET_ROUTE_CAPABILITIES.includes(entry as FleetRouteCapability))
+  )).sort();
+  return normalized.length ? normalized : inferRouteCapabilities(name, modelId, tags);
+};
+
+const parseRouteCapabilities = (value: string, name: string, modelId: string): FleetRouteCapability[] => {
+  try {
+    return normalizeRouteCapabilities(JSON.parse(value), name, modelId);
+  } catch {
+    return inferRouteCapabilities(name, modelId);
+  }
 };
 
 const FLEET_CONTROLLER_ROLES = ["control-plane", "inference", "specialist", "operator-client"] as const;
@@ -150,6 +186,7 @@ const mapRoute = (row: FleetRouteRow): FleetRoute => ({
   enabled: Boolean(row.enabled),
   fallbackRouteId: row.fallback_route_id,
   tags: parseStringArray(row.tags_json),
+  capabilities: parseRouteCapabilities(row.capabilities_json || row.tags_json, row.name, row.model_id),
   trustLevel: row.trust_level,
   disruptionCost: row.disruption_cost,
   defaultParams: parseRecord(row.default_params_json),
@@ -277,6 +314,7 @@ export class SqliteFleetStore implements FleetStore {
         enabled INTEGER NOT NULL DEFAULT 1,
         fallback_route_id TEXT,
         tags_json TEXT NOT NULL DEFAULT '[]',
+        capabilities_json TEXT NOT NULL DEFAULT '[]',
         trust_level TEXT NOT NULL DEFAULT '',
         disruption_cost TEXT NOT NULL DEFAULT '',
         default_params_json TEXT NOT NULL DEFAULT '{}',
@@ -288,6 +326,7 @@ export class SqliteFleetStore implements FleetStore {
       )
     `);
     this.addColumnIfMissing("fleet_routes", "endpoint_url", "TEXT");
+    this.addColumnIfMissing("fleet_routes", "capabilities_json", "TEXT NOT NULL DEFAULT '[]'");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_fleet_routes_controller_id ON fleet_routes(controller_id)");
   }
 
@@ -420,10 +459,10 @@ export class SqliteFleetStore implements FleetStore {
     const route = this.prepareRoute(input);
     this.db.query(`
       INSERT INTO fleet_routes (
-        id, name, controller_id, model_id, endpoint_url, enabled, fallback_route_id, tags_json,
+        id, name, controller_id, model_id, endpoint_url, enabled, fallback_route_id, tags_json, capabilities_json,
         trust_level, disruption_cost, default_params_json, notes, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       route.id,
       route.name,
@@ -433,6 +472,7 @@ export class SqliteFleetStore implements FleetStore {
       route.enabled ? 1 : 0,
       route.fallbackRouteId,
       JSON.stringify(route.tags),
+      JSON.stringify(route.capabilities),
       route.trustLevel,
       route.disruptionCost,
       JSON.stringify(route.defaultParams),
@@ -454,6 +494,7 @@ export class SqliteFleetStore implements FleetStore {
       enabled: input.enabled ?? Boolean(existing.enabled),
       fallbackRouteId: input.fallbackRouteId === undefined ? existing.fallback_route_id : input.fallbackRouteId,
       tags: input.tags ?? parseStringArray(existing.tags_json),
+      capabilities: input.capabilities ?? parseRouteCapabilities(existing.capabilities_json || existing.tags_json, existing.name, existing.model_id),
       trustLevel: input.trustLevel ?? existing.trust_level,
       disruptionCost: input.disruptionCost ?? existing.disruption_cost,
       defaultParams: input.defaultParams ?? parseRecord(existing.default_params_json),
@@ -462,7 +503,7 @@ export class SqliteFleetStore implements FleetStore {
     this.db.query(`
       UPDATE fleet_routes
       SET name = ?, controller_id = ?, model_id = ?, endpoint_url = ?, enabled = ?, fallback_route_id = ?,
-          tags_json = ?, trust_level = ?, disruption_cost = ?, default_params_json = ?, notes = ?, updated_at = ?
+          tags_json = ?, capabilities_json = ?, trust_level = ?, disruption_cost = ?, default_params_json = ?, notes = ?, updated_at = ?
       WHERE id = ?
     `).run(
       route.name,
@@ -472,6 +513,7 @@ export class SqliteFleetStore implements FleetStore {
       route.enabled ? 1 : 0,
       route.fallbackRouteId,
       JSON.stringify(route.tags),
+      JSON.stringify(route.capabilities),
       route.trustLevel,
       route.disruptionCost,
       JSON.stringify(route.defaultParams),
@@ -527,6 +569,7 @@ export class SqliteFleetStore implements FleetStore {
         r.enabled,
         r.fallback_route_id,
         r.tags_json,
+        r.capabilities_json,
         r.trust_level,
         r.disruption_cost,
         r.default_params_json,
@@ -576,6 +619,7 @@ export class SqliteFleetStore implements FleetStore {
       enabled: input.enabled ?? true,
       fallbackRouteId,
       tags: this.normalizeRouteTags(input.tags),
+      capabilities: normalizeRouteCapabilities(input.capabilities, this.normalizeRouteName(input.name), modelId, this.normalizeRouteTags(input.tags)),
       trustLevel: trimString(input.trustLevel),
       disruptionCost: trimString(input.disruptionCost),
       defaultParams: this.normalizeDefaultParams(input.defaultParams),

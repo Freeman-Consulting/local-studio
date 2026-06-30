@@ -2,6 +2,8 @@ export type FleetControllerRole = "control-plane" | "inference" | "specialist" |
 
 export type FleetControllerStatus = "unknown" | "online" | "offline" | "degraded";
 
+export type FleetRouteCapability = "chat" | "embeddings" | "vision" | "audio";
+
 export interface FleetControllerInput {
   url: string;
   apiKey?: string;
@@ -73,6 +75,7 @@ export interface FleetRouteInput {
   enabled?: boolean;
   fallbackRouteId?: string | null;
   tags?: string[];
+  capabilities?: FleetRouteCapability[];
   trustLevel?: string;
   disruptionCost?: string;
   defaultParams?: Record<string, unknown>;
@@ -87,6 +90,7 @@ export interface FleetRouteUpdateInput {
   enabled?: boolean;
   fallbackRouteId?: string | null;
   tags?: string[];
+  capabilities?: FleetRouteCapability[];
   trustLevel?: string;
   disruptionCost?: string;
   defaultParams?: Record<string, unknown>;
@@ -104,6 +108,7 @@ export interface FleetRoute {
   enabled: boolean;
   fallbackRouteId: string | null;
   tags: string[];
+  capabilities: FleetRouteCapability[];
   trustLevel: string;
   disruptionCost: string;
   defaultParams: Record<string, unknown>;

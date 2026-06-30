@@ -39,6 +39,7 @@ const routeModelInfo = (route: {
   controllerName: string;
   endpointUrl: string;
   tags?: string[];
+  capabilities?: string[];
   notes?: string;
 }): OpenAIModelInfo => ({
   id: fleetModelId(route.name),
@@ -51,6 +52,7 @@ const routeModelInfo = (route: {
     fleet_model_id: route.modelId,
     fleet_endpoint_url: route.endpointUrl,
     tags: route.tags ?? [],
+    capabilities: route.capabilities ?? [],
     notes: route.notes ?? "",
   },
 });
@@ -292,7 +294,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
         name: route.name,
         size_bytes: null,
         modified_at: null,
-        architecture: "fleet-route",
+        architecture: `fleet-route:${route.capabilities.join(",") || "unknown"}`,
         quantization: null,
         context_length: null,
         recipe_ids: [`fleet-route-${route.name}`],

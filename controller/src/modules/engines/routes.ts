@@ -71,6 +71,7 @@ const fleetRouteToRecipe = (route: FleetRoute): Recipe & { status: "stopped"; tp
       fleet_controller_id: route.controllerId,
       fleet_controller_name: route.controllerName,
       fleet_endpoint_url: route.endpointUrl,
+      fleet_capabilities: route.capabilities,
       virtual_recipe: true,
     },
   };

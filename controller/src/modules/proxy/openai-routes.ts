@@ -308,6 +308,9 @@ export const registerOpenAIRoutes: RouteRegistrar = (app, context) => {
     }
 
     if (matchedFleetRoute) {
+      if (!matchedFleetRoute.capabilities.includes("chat") && !matchedFleetRoute.capabilities.includes("vision")) {
+        throw new HttpStatus(400, `Fleet route ${matchedFleetRoute.name} does not support chat completions`);
+      }
       parsed["model"] = matchedFleetRoute.modelId;
       const target = context.stores.fleetStore.getRouteTarget(matchedFleetRoute.id);
       if (!target) throw notFound(`Fleet route not found: ${matchedFleetRoute.name}`);

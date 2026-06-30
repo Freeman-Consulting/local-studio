@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import type { RecipeWithStatus } from "@/lib/types";
+import { recipeSupportsCapability } from "@/features/recipes/recipe-capabilities";
 
 export function ModelsDropdown({
   recipes,
@@ -36,10 +37,11 @@ export function ModelsDropdown({
 
   useSyncExternalStore(subscribeOutsideClick, getModelsDropdownSnapshot, getModelsDropdownSnapshot);
 
+  const chatRecipes = recipes.filter((recipe) => recipeSupportsCapability(recipe, "chat"));
   const q = filter.toLowerCase();
   const filtered = q
-    ? recipes.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
-    : recipes;
+    ? chatRecipes.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
+    : chatRecipes;
   const visible = filtered.slice(0, q ? 8 : 6);
 
   return (
@@ -100,7 +102,7 @@ export function ModelsDropdown({
             >
               {filter
                 ? `${filtered.length - visible.length} more →`
-                : `View all ${recipes.length} →`}
+                : `View all ${chatRecipes.length} →`}
             </button>
           ) : null}
         </div>

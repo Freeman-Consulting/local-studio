@@ -72,6 +72,7 @@ export type {
   FleetControllerUpdateInput,
   FleetModelEntry,
   FleetRoute,
+  FleetRouteCapability,
   FleetRouteInput,
   FleetRouteUpdateInput,
   FleetStatusResponse,
