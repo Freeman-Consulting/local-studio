@@ -67,6 +67,12 @@ export function ControlPanel(props: DashboardLayoutProps) {
   );
 }
 
+function controllerListKey(controllers: SavedController[]): string {
+  return controllers
+    .map((controller) => `${normalizeControllerUrl(controller.url)}\u0000${controller.name ?? ""}`)
+    .join("\u0001");
+}
+
 function ControllerMatrix() {
   const [controllers, setControllers] = useState<SavedController[]>([]);
   const [snapshots, setSnapshots] = useState<ControllerSnapshot[]>([]);
@@ -89,7 +95,9 @@ function ControllerMatrix() {
       setSnapshots((current) =>
         current.filter((snapshot) => urls.has(normalizeControllerUrl(snapshot.url))),
       );
-      setControllers(next);
+      setControllers((current) =>
+        controllerListKey(current) === controllerListKey(next) ? current : next,
+      );
     };
     const load = async () => {
       const local = localControllers();
@@ -106,12 +114,10 @@ function ControllerMatrix() {
     };
     const refresh = () => void load();
     refresh();
-    window.addEventListener("storage", refresh);
     window.addEventListener(BACKEND_URL_CHANGED_EVENT, refresh);
     window.addEventListener(CONTROLLERS_CHANGED_EVENT, refresh);
     return () => {
       cancelled = true;
-      window.removeEventListener("storage", refresh);
       window.removeEventListener(BACKEND_URL_CHANGED_EVENT, refresh);
       window.removeEventListener(CONTROLLERS_CHANGED_EVENT, refresh);
     };
