@@ -506,7 +506,7 @@ export default function FleetPage() {
                     <div className="mt-2 overflow-hidden rounded-md border border-(--border)/45">
                       {models.map((model) => (
                         <div
-                          key={`${model.controllerId}:${model.modelId}`}
+                          key={model.id}
                           className="grid gap-2 border-b border-(--border)/35 px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                         >
                           <div className="min-w-0 font-mono text-[length:var(--fs-sm)] text-(--fg)">
