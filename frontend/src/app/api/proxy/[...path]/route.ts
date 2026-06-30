@@ -155,7 +155,9 @@ async function resolveProxyTarget(
 ): Promise<ProxyTargetResolution> {
   const settings = await getApiSettings();
   const overrideHeaderUrl = normalizeBackendUrl(request.headers.get("x-backend-url"));
-  const strictOverride = request.headers.get("x-backend-strict") === "1";
+  const strictOverride =
+    request.headers.get("x-backend-strict") === "1" &&
+    request.headers.get("x-backend-probe") === "1";
   const overrideCookieUrl = normalizeBackendUrl(
     request.cookies.get(BACKEND_OVERRIDE_COOKIE)?.value ??
       request.cookies.get(LEGACY_BACKEND_OVERRIDE_COOKIE)?.value ??

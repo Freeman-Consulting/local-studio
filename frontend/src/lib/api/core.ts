@@ -271,7 +271,10 @@ export function createApiCore(params: {
       // drift to a stale or non-control-plane URL; allow the proxy to fall back
       // to the configured controller and clear the bad override instead of
       // wedging core pages such as /recipes until the 30s client timeout fires.
-      if (explicitBackendUrl) headers["X-Backend-Strict"] = "1";
+      if (explicitBackendUrl) {
+        headers["X-Backend-Strict"] = "1";
+        headers["X-Backend-Probe"] = "1";
+      }
     }
 
     const storedKey = apiKeyOverride === undefined ? getApiKey() : apiKeyOverride.trim();

@@ -18,6 +18,14 @@ const DURABLE_EXACT_KEYS = new Set([
 
 const DURABLE_KEY_PREFIXES = ["local-studio.", "local-studio-", "localstudio_", "local_studio_"];
 
+const NOISY_DURABLE_KEY_PREFIXES = [
+  "local-studio.agent.transcripts",
+  "local-studio.agent.activeSessions",
+  "local-studio.agent.paneState",
+  "local-studio.agent.sessionPrefs",
+];
+
+let lastSavedPreferencesJson = "";
 let saveTimer: number | null = null;
 
 function bridge(): DesktopUiPreferencesBridge | null {
@@ -32,6 +40,7 @@ function bridge(): DesktopUiPreferencesBridge | null {
 }
 
 function isDurableUiPreferenceKey(key: string): boolean {
+  if (NOISY_DURABLE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
   return (
     DURABLE_EXACT_KEYS.has(key) || DURABLE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
   );
@@ -173,7 +182,10 @@ export function scheduleDurableUiPreferencesSave(): void {
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
     const prefs = collectDurableUiPreferences();
+    const serialized = JSON.stringify(prefs);
+    if (serialized === lastSavedPreferencesJson) return;
+    lastSavedPreferencesJson = serialized;
     void saveControllerUiPreferences(prefs);
     void desktop?.saveUiPreferences?.(prefs).catch(() => undefined);
-  }, 200);
+  }, 1_000);
 }
