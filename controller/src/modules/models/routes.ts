@@ -33,20 +33,23 @@ import { fetchInference } from "../../services/inference-client";
 
 const fleetModelId = (routeName: string): string => `fleet/${routeName}`;
 
-const routeModelInfo = (route: {
-  name: string;
-  modelId: string;
-  controllerName: string;
-  endpointUrl: string;
-  tags?: string[];
-  capabilities?: string[];
-  notes?: string;
-}): OpenAIModelInfo => ({
+const routeModelInfo = (
+  route: {
+    name: string;
+    modelId: string;
+    controllerName: string;
+    endpointUrl: string;
+    tags?: string[];
+    capabilities?: string[];
+    notes?: string;
+  },
+  active: boolean,
+): OpenAIModelInfo => ({
   id: fleetModelId(route.name),
   object: "model",
   created: Math.floor(Date.now() / 1000),
   owned_by: `fleet:${route.controllerName || "unknown"}`,
-  active: true,
+  active,
   metadata: {
     fleet_route_name: route.name,
     fleet_model_id: route.modelId,
@@ -125,7 +128,7 @@ export const registerModelsRoutes: RouteRegistrar = (app, context) => {
     }
 
     for (const route of context.stores.fleetStore.listRoutes().filter((entry) => entry.enabled)) {
-      models.push(routeModelInfo(route));
+      models.push(routeModelInfo(route, context.activeFleetRoute.isActive(route.id)));
     }
 
     // Dev / mock-friendly fallback: when there are no recipes configured, still return a model so the UI

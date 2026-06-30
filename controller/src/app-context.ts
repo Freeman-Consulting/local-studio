@@ -20,12 +20,17 @@ import { InferenceRequestStore } from "./stores/inference-request-store";
 import { ControllerSettingsStore } from "./stores/controller-settings-store";
 import { ControllerRequestStore } from "./stores/controller-request-store";
 import { createFleetStore, type FleetStore } from "./stores/fleet-store";
+import {
+  createActiveFleetRouteState,
+  type ActiveFleetRouteState,
+} from "./modules/fleet/active-fleet-route";
 
 export interface AppContext {
   config: Config;
   logger: Logger;
   eventManager: EventManager;
   launchState: LaunchState;
+  activeFleetRoute: ActiveFleetRouteState;
   launchFailureBudget: LaunchFailureBudget;
   metrics: ControllerMetrics;
   metricsRegistry: MetricsRegistry;
@@ -88,6 +93,7 @@ export const createAppContext = (): AppContext => {
   }
 
   const launchState = createLaunchState();
+  const activeFleetRoute = createActiveFleetRouteState();
   const launchFailureBudget = createLaunchFailureBudget();
   const { registry: metricsRegistry, metrics } = createMetrics();
   const processManager = createProcessManager(config, logger, eventManager);
@@ -111,6 +117,7 @@ export const createAppContext = (): AppContext => {
     logger,
     eventManager,
     launchState,
+    activeFleetRoute,
     launchFailureBudget,
     metrics,
     metricsRegistry,

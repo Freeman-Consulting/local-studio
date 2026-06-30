@@ -95,7 +95,7 @@ const fleetRouteToRecipe = (route: FleetRoute): Recipe & { status: "stopped"; tp
     dtype: null,
     host: endpoint.host,
     port: endpoint.port,
-    served_model_name: route.modelId,
+    served_model_name: `fleet/${route.name}`,
     python_path: null,
     extra_args: metadata,
     max_thinking_tokens: null,
@@ -162,7 +162,10 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     });
     const fleetRouteRecipes = context.stores.fleetStore.listRoutes()
       .filter((route) => route.enabled)
-      .map(fleetRouteToRecipe);
+      .map((route) => ({
+        ...fleetRouteToRecipe(route),
+        status: context.activeFleetRoute.isActive(route.id) ? "running" : "stopped",
+      }));
     return ctx.json([...result, ...fleetRouteRecipes]);
   });
 
@@ -219,11 +222,26 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
     const recipeId = ctx.req.param("recipeId");
     const recipe = context.stores.recipeStore.get(recipeId);
     if (!recipe) {
-      const fleetRouteRecipe = getFleetRouteRecipe(context.stores.fleetStore.listRoutes(), recipeId);
-      if (fleetRouteRecipe) {
+      const route = context.stores.fleetStore.listRoutes().find((entry) => fleetRouteRecipeId(entry) === recipeId || entry.name === recipeId);
+      const fleetRouteRecipe = route ? fleetRouteToRecipe(route) : null;
+      if (route && fleetRouteRecipe) {
+        if (!route.capabilities.includes("chat") && !route.capabilities.includes("vision")) {
+          throw badRequest(`Fleet route ${route.name} does not support chat launch`);
+        }
+        const current = await context.processManager.findInferenceProcess(context.config.inference_port);
+        if (current) {
+          context.logger.info("Switching from local model to fleet route", {
+            running_model: current.served_model_name ?? current.model_path,
+            requested_route: route.name,
+          });
+          const evictResult = await context.engineService.setActiveRecipe(null);
+          if (!evictResult.ok) throw serviceUnavailable(evictResult.error);
+        }
+        context.activeFleetRoute.set(route);
+        await context.eventManager.publish(new Event(CONTROLLER_EVENTS.RECIPE_UPDATED, { recipe: fleetRouteRecipe }));
         return ctx.json({
           success: true,
-          message: `Fleet route ${fleetRouteRecipe.name} is already available; no local launch required`,
+          message: `Fleet route ${fleetRouteRecipe.name} selected`,
         });
       }
       throw notFound("Recipe not found");
@@ -252,17 +270,16 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
       context.config.inference_port
     );
     if (current && !isRecipeRunning(recipe, current, { allowEitherPathContains: true })) {
-      context.logger.warn("Rejected launch request while another model is running", {
+      context.logger.info("Switching local model", {
         running_model: current.served_model_name ?? current.model_path,
         running_backend: current.backend,
         requested_recipe_id: recipeId,
         source,
       });
-      throw new HttpStatus(
-        409,
-        `Model ${current.served_model_name ?? current.model_path} is already running; evict it before launching ${recipeId}`
-      );
+      const evictResult = await context.engineService.setActiveRecipe(null);
+      if (!evictResult.ok) throw serviceUnavailable(evictResult.error);
     }
+    context.activeFleetRoute.clear();
     context.logger.info("Accepted launch request", { recipe_id: recipeId, source });
     const controller = new AbortController();
     launchAbortControllers.set(recipeId, controller);
@@ -297,6 +314,7 @@ export const registerEngineRoutes: RouteRegistrar = (app, context) => {
   });
 
   app.post("/evict", async (ctx) => {
+    context.activeFleetRoute.clear();
     const result = await context.engineService.setActiveRecipe(null);
     if (!result.ok) throw serviceUnavailable(result.error);
     return ctx.json({ success: true, evicted_pid: null });

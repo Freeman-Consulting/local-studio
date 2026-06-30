@@ -48,9 +48,11 @@ export const registerSystemRoutes: RouteRegistrar = (app, context) => {
     const current = await observeControllerFunction(context, "status.findInferenceProcess", () =>
       context.processManager.findInferenceProcess(context.config.inference_port)
     );
+    const activeFleetProcess = current ? null : context.activeFleetRoute.toProcess();
+    const process = current ?? activeFleetProcess;
     return ctx.json({
-      running: Boolean(current),
-      process: current,
+      running: Boolean(process),
+      process,
       inference_port: context.config.inference_port,
       launching: context.launchState.getLaunchingRecipeId(),
       launch_failures: context.launchFailureBudget.listActive(),

@@ -195,7 +195,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
     }
     if (item.kind === "content") {
       nodes.push(
-        <div key={item.block.id} className="min-w-0">
+        <div key={`content-${index}-${item.block.id}`} className="min-w-0">
           <MemoContentBlock block={item.block} />
           {showActions && index === lastContentIndex ? (
             <AssistantMessageActions copyText={copyText} onForkSession={onForkSession} />
@@ -204,7 +204,7 @@ const AssistantBlocks = memo(function AssistantBlocks({
       );
       return;
     }
-    nodes.push(<MemoEventBlock key={item.block.id} block={item.block} />);
+    nodes.push(<MemoEventBlock key={`event-${index}-${item.block.id}`} block={item.block} />);
   });
   // No content yet: the divider ticks "Working for…" below the activity.
   if (lastContentIndex === -1 && live && hasActivity) {

@@ -40,29 +40,58 @@ type FleetApi = {
 const encodePathSegment = (segment: string): string =>
   encodeURIComponent(segment).replace(/%2F/gi, "%252F");
 
+type FleetControllersCache = { expiresAt: number; promise: Promise<FleetController[]> };
+let fleetControllersCache: FleetControllersCache | null = null;
+const FLEET_CONTROLLERS_CACHE_MS = 10_000;
+
+function clearFleetControllersCache(): void {
+  fleetControllersCache = null;
+}
+
+function getCachedFleetControllers(core: ApiCore): Promise<FleetController[]> {
+  const now = Date.now();
+  if (fleetControllersCache && fleetControllersCache.expiresAt > now) {
+    return fleetControllersCache.promise;
+  }
+  const promise = core.request<FleetController[]>("/fleet/controllers", { retries: 0 });
+  fleetControllersCache = { expiresAt: now + FLEET_CONTROLLERS_CACHE_MS, promise };
+  void promise.catch(() => {
+    if (fleetControllersCache?.promise === promise) clearFleetControllersCache();
+  });
+  return promise;
+}
+
 export const createFleetApi = (core: ApiCore): FleetApi => ({
-  getFleetControllers: () => core.request<FleetController[]>("/fleet/controllers"),
+  getFleetControllers: () => getCachedFleetControllers(core),
   getFleetControllerById: (id) =>
     core.request<FleetController>(`/fleet/controllers/${encodePathSegment(id)}`),
-  createFleetController: (input) =>
-    core.request<FleetController>("/fleet/controllers", {
+  createFleetController: (input) => {
+    clearFleetControllersCache();
+    return core.request<FleetController>("/fleet/controllers", {
       method: "POST",
       body: JSON.stringify(input),
-    }),
-  updateFleetController: (id, input) =>
-    core.request<FleetController>(`/fleet/controllers/${encodePathSegment(id)}`, {
+    });
+  },
+  updateFleetController: (id, input) => {
+    clearFleetControllersCache();
+    return core.request<FleetController>(`/fleet/controllers/${encodePathSegment(id)}`, {
       method: "PATCH",
       body: JSON.stringify(input),
-    }),
-  deleteFleetController: (id) =>
-    core.request<{ success: true }>(`/fleet/controllers/${encodePathSegment(id)}`, {
+    });
+  },
+  deleteFleetController: (id) => {
+    clearFleetControllersCache();
+    return core.request<{ success: true }>(`/fleet/controllers/${encodePathSegment(id)}`, {
       method: "DELETE",
-    }),
-  importFleetControllers: (controllers) =>
-    core.request<FleetControllerImportResult>("/fleet/controllers/import", {
+    });
+  },
+  importFleetControllers: (controllers) => {
+    clearFleetControllersCache();
+    return core.request<FleetControllerImportResult>("/fleet/controllers/import", {
       method: "POST",
       body: JSON.stringify({ controllers }),
-    }),
+    });
+  },
   getFleetStatus: (timeoutMs) => {
     const query =
       typeof timeoutMs === "number" ? `?timeoutMs=${encodeURIComponent(String(timeoutMs))}` : "";

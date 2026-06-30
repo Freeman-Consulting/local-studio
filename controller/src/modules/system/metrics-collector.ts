@@ -208,9 +208,10 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
 
   const collect = async (): Promise<void> => {
     try {
-      const current = await context.processManager.findInferenceProcess(
+      const localProcess = await context.processManager.findInferenceProcess(
         context.config.inference_port
       );
+      const current = localProcess ?? context.activeFleetRoute.toProcess();
       const gpuList = getGpuInfo();
 
       if (current) {
@@ -412,11 +413,14 @@ export const startMetricsCollector = (context: AppContext): (() => void) => {
               avgTtftMs > 0 ? avgTtftMs : undefined
             );
           }
-        } else if (current.backend === "llamacpp") {
+        } else if (localProcess && current.backend === "llamacpp") {
           // vLLM counters are unavailable on llama.cpp, so derive throughput from recent llama log output.
           lastVllmMetrics = {};
           lastMetricsTime = 0;
-          const sample = scrapeLlamacppThroughput(context, current);
+          const sample = scrapeLlamacppThroughput(
+            context,
+            localProcess as Parameters<typeof scrapeLlamacppThroughput>[1]
+          );
           const isNewSample = Boolean(sample && sample.sampleKey !== lastLlamacppSampleKey);
           if (sample && isNewSample) {
             lastLlamacppSampleAt = Date.now();
