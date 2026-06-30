@@ -6,8 +6,15 @@ const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
 
+const tailnetDnsName = process.env.LOCAL_STUDIO_MAIN_CONTROLLER_DNS;
+const allowedDevOrigins = [
+  tailnetDnsName,
+  tailnetDnsName ? `http://${tailnetDnsName}:3000` : null,
+].filter((origin): origin is string => Boolean(origin));
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  allowedDevOrigins,
   images: { unoptimized: true },
   // Keep the Pi SDK out of the webpack/turbopack bundle so it loads from
   // node_modules at runtime (Node-only deps, dynamic jiti loader, etc.).

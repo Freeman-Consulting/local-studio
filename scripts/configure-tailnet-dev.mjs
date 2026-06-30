@@ -4,6 +4,19 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
+function readEnv(path) {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8").split(/\r?\n/).filter((line, index, lines) => index < lines.length - 1 || line.length > 0);
+}
+
+function envObject(path) {
+  return Object.fromEntries(
+    readEnv(path)
+      .filter((line) => line.includes("=") && !line.trim().startsWith("#"))
+      .map((line) => line.split(/=(.*)/s).slice(0, 2)),
+  );
+}
+
 const controllerPort = process.env.LOCAL_STUDIO_PORT || "8081";
 const frontendPort = process.env.LOCAL_STUDIO_FRONTEND_PORT || "3000";
 const tailscaleBinary = existsSync("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
@@ -15,13 +28,10 @@ const dnsName = String(self.DNSName ?? "").replace(/\.$/, "");
 const tailnetIp = Array.isArray(self.TailscaleIPs) ? String(self.TailscaleIPs[0] ?? "") : "";
 if (!dnsName || !tailnetIp) throw new Error("Tailscale is running but did not report a MagicDNS name and Tailnet IP");
 const controllerUrl = `http://${dnsName}:${controllerPort}`;
+const controllerProxyUrl = `http://127.0.0.1:${controllerPort}`;
 const frontendUrl = `http://${dnsName}:${frontendPort}`;
-const apiKey = process.env.LOCAL_STUDIO_API_KEY || randomBytes(32).toString("base64url");
-
-function readEnv(path) {
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8").split(/\r?\n/).filter((line, index, lines) => index < lines.length - 1 || line.length > 0);
-}
+const existingRootEnv = envObject(".env");
+const apiKey = process.env.LOCAL_STUDIO_API_KEY || existingRootEnv.LOCAL_STUDIO_API_KEY || randomBytes(32).toString("base64url");
 
 function writeEnv(path, updates) {
   const lines = readEnv(path);
@@ -41,7 +51,7 @@ function writeEnv(path, updates) {
 }
 
 writeEnv(".env", {
-  LOCAL_STUDIO_HOST: tailnetIp,
+  LOCAL_STUDIO_HOST: "0.0.0.0",
   LOCAL_STUDIO_PORT: controllerPort,
   LOCAL_STUDIO_API_KEY: apiKey,
   LOCAL_STUDIO_CORS_ORIGINS: [frontendUrl, "http://localhost:3000", "http://127.0.0.1:3000"].join(","),
@@ -50,15 +60,11 @@ writeEnv(".env", {
   LOCAL_STUDIO_MAIN_CONTROLLER_TAILSCALE_IP: tailnetIp,
 });
 
-const rootEnv = Object.fromEntries(
-  readEnv(".env")
-    .filter((line) => line.includes("=") && !line.trim().startsWith("#"))
-    .map((line) => line.split(/=(.*)/s).slice(0, 2)),
-);
+const rootEnv = envObject(".env");
 const dataDir = rootEnv.LOCAL_STUDIO_DATA_DIR || join(process.env.HOME || ".", "LocalStudio", "data");
 writeEnv("frontend/.env.local", {
-  BACKEND_URL: controllerUrl,
-  LOCAL_STUDIO_BACKEND_URL: controllerUrl,
+  BACKEND_URL: controllerProxyUrl,
+  LOCAL_STUDIO_BACKEND_URL: controllerProxyUrl,
   LOCAL_STUDIO_API_KEY: apiKey,
   LOCAL_STUDIO_DATA_DIR: dataDir,
   NEXT_PUBLIC_BACKEND_URL: "/api/proxy",
@@ -73,7 +79,7 @@ let settings = {};
 try {
   settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 } catch {}
-settings.backendUrl = controllerUrl;
+settings.backendUrl = controllerProxyUrl;
 settings.apiKey = apiKey;
 settings.voiceUrl ??= "";
 settings.voiceModel ??= "whisper-large-v3-turbo";
@@ -85,5 +91,6 @@ try {
 console.log(`Tailnet DNS: ${dnsName}`);
 console.log(`Tailnet IP: ${tailnetIp}`);
 console.log(`Controller: ${controllerUrl}`);
+console.log(`Frontend proxy target: ${controllerProxyUrl}`);
 console.log(`Frontend: ${frontendUrl}`);
 console.log("API key written to local env/settings files");

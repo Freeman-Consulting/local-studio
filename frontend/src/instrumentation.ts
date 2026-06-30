@@ -7,7 +7,10 @@ export async function register(): Promise<void> {
   // fetch aborts with ETIMEDOUT and the proxy surfaces 500/502. Raise the
   // family-autoselection attempt timeout so the connection can fall back to a
   // reachable address. Harmless under healthy networks and other runtimes.
-  const net = await import("node:net");
+  const importNodeNet = new Function("specifier", "return import(specifier)") as (
+    specifier: string,
+  ) => Promise<unknown>;
+  const net = await importNodeNet("node:net");
   const setTimeoutFn = (
     net as unknown as {
       setDefaultAutoSelectFamilyAttemptTimeout?: (value: number) => void;

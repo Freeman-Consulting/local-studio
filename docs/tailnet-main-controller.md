@@ -16,11 +16,13 @@ The configure step reads the local Tailscale daemon and writes local-only enviro
 
 It sets:
 
-- controller bind host to the Tailscale IP
+- controller bind host to `0.0.0.0` with required API-key auth so it is reachable through the Tailnet address
 - user-facing controller URL to `http://<magicdns>:8081`
 - user-facing frontend URL to `http://<magicdns>:3000`
 - controller API key for non-loopback binding
-- frontend proxy defaults so browser clients use `/api/proxy` and the server forwards to the tailnet controller with the API key
+- frontend proxy defaults so browser clients use `/api/proxy` and the server forwards over loopback with the API key
+
+The browser/operator URL stays MagicDNS. The frontend server's private proxy target uses loopback because it runs on the same main-controller host as the controller; this avoids intermittent self-Tailnet fetch failures while keeping all browser-to-controller access on Tailscale and all non-loopback controller access API-key protected.
 
 ## Start
 

@@ -62,9 +62,6 @@ const controllerStatus = (
 ): FleetControllerStatusResult | null =>
   statuses.find((status) => status.controllerId === controller.id) ?? null;
 
-const modelLabel = (model: FleetModelEntry): string =>
-  [model.controllerName, model.modelId].filter(Boolean).join(" · ");
-
 const getFleetSnapshot = (): number => 0;
 
 export default function FleetPage() {
@@ -95,6 +92,18 @@ export default function FleetPage() {
     defaultParams: {},
     notes: "",
   });
+
+  const modelsByController = useMemo(
+    () =>
+      state.controllers
+        .map((controller) => ({
+          controller,
+          status: controllerStatus(controller, state.statuses),
+          models: state.models.filter((model) => model.controllerId === controller.id),
+        }))
+        .filter((group) => group.models.length > 0),
+    [state.controllers, state.models, state.statuses],
+  );
 
   const onlineCount = useMemo(
     () => state.statuses.filter((status) => status.status === "online").length,
@@ -435,18 +444,52 @@ export default function FleetPage() {
               </p>
             </div>
             <div className="divide-y divide-(--border)/45">
-              {state.models.length === 0 ? (
+              {modelsByController.length === 0 ? (
                 <div className="px-4 py-6 text-[length:var(--fs-sm)] text-(--dim)">
                   No fleet models reported yet.
                 </div>
               ) : (
-                state.models.map((model) => (
-                  <div key={`${model.controllerId}:${model.modelId}`} className="px-4 py-3">
-                    <div className="font-mono text-[length:var(--fs-sm)] text-(--fg)">
-                      {modelLabel(model)}
+                modelsByController.map(({ controller, models, status }) => (
+                  <div key={controller.id} className="px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusDot tone={status ? statusTone(status.status) : "default"} />
+                          <span className="text-[length:var(--fs-lg)] font-semibold text-(--fg)">
+                            {controller.name || controller.url}
+                          </span>
+                          <StatusPill tone="default" variant="badge">
+                            {controller.role}
+                          </StatusPill>
+                          <StatusPill
+                            tone={status ? statusTone(status.status) : "default"}
+                            variant="badge"
+                          >
+                            {status?.status ?? "unknown"}
+                          </StatusPill>
+                        </div>
+                        <div className="mt-1 break-all font-mono text-[length:var(--fs-xs)] text-(--dim)">
+                          {controller.url}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right text-[length:var(--fs-xs)] text-(--dim)">
+                        {models.length} {models.length === 1 ? "model" : "models"}
+                      </div>
                     </div>
-                    <div className="mt-1 text-[length:var(--fs-xs)] text-(--dim)">
-                      {model.backend || "unknown backend"} · checked {model.checkedAt}
+                    <div className="mt-3 overflow-hidden rounded-md border border-(--border)/45">
+                      {models.map((model) => (
+                        <div
+                          key={`${model.controllerId}:${model.modelId}`}
+                          className="grid gap-2 border-b border-(--border)/35 px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]"
+                        >
+                          <div className="min-w-0 font-mono text-[length:var(--fs-sm)] text-(--fg)">
+                            {model.modelId}
+                          </div>
+                          <div className="text-[length:var(--fs-xs)] text-(--dim) sm:text-right">
+                            {model.backend || "unknown backend"} · checked {model.checkedAt}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))
